@@ -20,9 +20,6 @@
 
 /coq/.depend
 /coq/CoqSrc.mk
-/coq/_CoqProject
-/coq/syntax_ott.v
-/coq/target_inf.v
 /doc/ESOP2018/ott-rules.tex
 /doc/notes/note.tex
 /doc/notes/ott-rules.tex

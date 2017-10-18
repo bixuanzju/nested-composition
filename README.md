@@ -3,5 +3,5 @@
 Supplementary material for the paper "Coherent Nested Composition with Disjoint
 Intersection Types".
 
-- `coq`: Coq formalization of the calculus
-- `impl`: Haskell implementation of the calculus
+- [coq/](./coq) for Coq formalization of the calculus
+- [impl/](./impl) for Haskell implementation of the calculus
