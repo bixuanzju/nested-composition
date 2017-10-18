@@ -65,6 +65,20 @@ implLangNegEval : LangNegEval =
   implLangEval ,, implNegPrint ,, implNegEval;
 -- END_LANG_FINAL
 
+
+
+-- BEGIN_LANG_EXT_INTER
+type ExpAlg[E] = { lit : Int -> E, add : E -> E -> E };
+type ExpAlgExt[E] = ExpAlg[E] & { sub : E -> E -> E };
+-- END_LANG_EXT_INTER
+
+
+-- BEGIN_LANG_EXT
+e1 E (f : ExpAlg[E]) : E = f.add (f.lit 2) (f.lit 3);    -- 2 + 3
+e2 E (f : ExpAlgExt[E]) : E = f.sub (f.lit 5) (e1 E f);  -- 5 - (2 + 3)
+-- END_LANG_EXT
+
+
 -- BEGIN_TEST
 fac = implLangNegEval;
 e = fac.add (fac.neg (fac.lit 2)) (fac.lit 3);
