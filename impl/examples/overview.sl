@@ -1,0 +1,72 @@
+--> "-2.0+3.0 = 1.0"
+
+-- BEGIN_PRINT_INTERFACE
+type IPrint = { print : String };
+-- END_PRINT_INTERFACE
+
+-- BEGIN_LANG_FAMILY
+type Lang = { lit : Int -> IPrint, add : IPrint -> IPrint -> IPrint };
+-- END_LANG_FAMILY
+
+
+-- BEGIN_LANG_FAMILY2
+type Lang = {lit : Int -> IPrint} & {add : IPrint -> IPrint -> IPrint};
+-- END_LANG_FAMILY2
+
+-- BEGIN_LANG_IMPL
+implLang : Lang = {
+  lit = \ x -> { print = x.toString },
+  add = \ a b -> { print = a.print ++ "+" ++ b.print } };
+-- END_LANG_IMPL
+
+
+-- BEGIN_EVAL_INTERFACE
+type IEval = { eval : Int };
+-- END_EVAL_INTERFACE
+
+
+-- BEGIN_EVAL_PRINT_INTERFACE
+type LangEval = {
+  lit : Int -> IPrint & IEval,
+  add : IPrint & IEval  -> IPrint & IEval -> IPrint & IEval };
+-- END_EVAL_PRINT_INTERFACE
+
+-- BEGIN_EVAL_INTERFACE2
+type EvalExt = { lit : Int -> IEval, add : IEval -> IEval -> IEval };
+-- END_EVAL_INTERFACE2
+
+
+-- BEGIN_EVAL_PRINT_IMPL
+implEval : EvalExt = {
+  lit = \x ->  { eval = x },
+  add = \a b ->  { eval = a.eval + b.eval }
+};
+
+implLangEval : LangEval = implLang ,, implEval;
+-- END_EVAL_PRINT_IMPL
+
+
+-- BEGIN_LANG_NEG
+type NegPrint = { neg : IPrint -> IPrint };
+type LangNeg = Lang & NegPrint;
+
+implNegPrint : NegPrint = { neg = \a -> { print = "-" ++ a.print } };
+implLangNeg : LangNeg = implLang ,, implNegPrint;
+-- END_LANG_NEG
+
+
+-- BEGIN_LANG_FINAL
+type NegEval = { neg : IEval -> IEval};
+implNegEval : NegEval = { neg = \a -> { eval = 0 - a.eval } };
+
+type NegEvalExt = { neg : IPrint & IEval -> IPrint & IEval };
+type LangNegEval = LangEval & NegEvalExt;
+implLangNegEval : LangNegEval =
+  implLangEval ,, implNegPrint ,, implNegEval;
+-- END_LANG_FINAL
+
+-- BEGIN_TEST
+fac = implLangNegEval;
+e = fac.add (fac.neg (fac.lit 2)) (fac.lit 3);
+main = e.print ++ " = " ++ e.eval.toString -- Output: "-2+3 = 1"
+-- END_TEST
