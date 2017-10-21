@@ -1,5 +1,6 @@
 module Main where
 
+import           Control.Applicative
 import           Control.Exception (SomeException, try)
 import           Control.Monad.State.Strict
 import           Data.List (isPrefixOf)
@@ -9,7 +10,7 @@ import           System.Exit
 import           Text.PrettyPrint.ANSI.Leijen hiding (Pretty)
 
 import           SEDEL.Environment
-import           SEDEL.Parser.Parser (parseExpr)
+import           SEDEL.Parser.Parser
 import           SEDEL.PrettyPrint
 import           SEDEL.Source.Typing
 import qualified SEDEL.Target.CBN as CBN
@@ -44,8 +45,8 @@ ppMsg d = liftIO . putDoc $ d <> line
 -- Execution
 exec :: String -> Repl ()
 exec source =
-  case parseExpr source of
-    Left err -> ppMsg $ warn "Syntax error" <+> text err
+  case  parseModule source <|> parseExpr source  of
+    Left err ->   ppMsg $ warn "Syntax error" <+> text err
     Right abt -> do
       env <- getCtx
       let res = runTcMonad (replCtx env) (tcModule abt)

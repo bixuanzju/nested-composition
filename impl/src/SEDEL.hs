@@ -11,7 +11,7 @@ import qualified Data.Text as T
 import           Text.PrettyPrint.ANSI.Leijen hiding (Pretty)
 
 import           SEDEL.Environment
-import           SEDEL.Parser.Parser (parseExpr)
+import           SEDEL.Parser.Parser (parseModule)
 import           SEDEL.PrettyPrint
 import           SEDEL.Source.Typing
 import qualified SEDEL.Target.CBN as C
@@ -31,7 +31,7 @@ readTry = try
 
 eval :: String -> Result
 eval inp =
-  case parseExpr inp of
+  case parseModule inp of
     Left err -> ret $ warn "Syntax error" <+> text err
     Right abt ->
       let res = runTcMonad emptyCtx (tcModule abt)

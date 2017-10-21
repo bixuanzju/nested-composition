@@ -1,4 +1,4 @@
-module SEDEL.Parser.Parser (parseExpr) where
+module SEDEL.Parser.Parser (parseModule, parseExpr) where
 
 import           Control.Arrow (first, second)
 import           Control.Monad (void, liftM3)
@@ -15,11 +15,19 @@ import           SEDEL.Common
 import           SEDEL.Source.Syntax
 import           SEDEL.Util
 
-parseExpr :: String -> Either String Module
-parseExpr s =
+parseModule :: String -> Either String Module
+parseModule s =
   case runParser (whole prog) "" s of
     Left err -> Left $ parseErrorPretty err
     Right e -> Right e
+
+
+parseExpr :: String -> Either String Module
+parseExpr s =
+  case runParser (whole expr) "" s of
+    Left err -> Left $ parseErrorPretty err
+    Right e -> Right (Module [] (DefDecl (TmBind "main" [] [] e Nothing)))
+
 
 -- | Top-level parsers (should consume all input)
 whole :: Parser a -> Parser a
@@ -28,11 +36,6 @@ whole p = sc *> p <* eof
 ------------------------------------------------------------------------
 -- Programs
 ------------------------------------------------------------------------
-
--- prog :: Parser Module
--- prog =
---    -- hack for repl
---   try (expr >>= \e -> return $ Module [] (DefDecl (TmBind "main" [] [] e Nothing))) <|> prog'
 
 prog :: Parser Module
 prog = do
