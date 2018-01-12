@@ -27,6 +27,6 @@ $(COQMKFILENAME): Makefile $(shell ls *.v | grep -v _ott.v | grep -v _inf.v)
 	{ echo "-R . $(LIBNAME)" ; ls *.v ; } > _CoqProject && coq_makefile -arg '-w -variable-collision,-meta-collision,-require-in-module' -f _CoqProject -o $(COQMKFILENAME)
 
 coqclean:
-	rm -if *.v-e *.v.d *.vo *.glob $(VOFILES) $(COQMKFILENAME)
+	rm -if *.v-e *.v.d *.vio *.vo *.glob $(VOFILES) $(COQMKFILENAME)
 
 clean: coqclean

@@ -1,4 +1,4 @@
-This repository is built with Coq 8.6.1.
+This repository is built with Coq 8.7.1.
 
 It requires `LibTatics.v` from [TLC](http://www.chargueraud.org/softs/tlc/), and
 the 8.6 branch of [metalib](https://github.com/plclub/metalib). The former is
@@ -20,19 +20,15 @@ Run `make` will check the proofs.
 
 ## Lemmas and Theorems in the Paper ##
 
-+ `Theorem 1`  - `Target_Safety.v/type_safety`
++ `Theorem 1`  - `Target_Safety.v/preservation`
++ `Theorem 2`  - `Target_Safety.v/progress`
 + `Lemma 1`  - `Source_Property.v/subtyping_well_type_coercion`
 + `Lemma 2`  - `Source_Property.v/elaboration_well_type_term`
 + `Lemma 3`  - `Compatibility_Lemma.v/disjoint_rel_v`
 + `Lemma 4`  - `Coercion_Compatibility.v/coercion_compatibility1`, `Coercion_Compatibility.v/coercion_compatibility2`
 + `Lemma 5`  - `Coherence.v/congruence`
-+ `Theorem 3`  - `Source_Property.v/inference_unique`
++ `Theorem 3`  - `Coherence.v/coherence_thm`
++ `Theorem 4`  - `Source_Property.v/inference_unique`
 + `Lemma 6`  - `Coherence.v/coherence_log`
-+ `Theorem 2`  - `Coherence.v/coherence_thm`
-+ `Theorem 4`  - `Subtype_Property.v/ASub2sub`
-+ `Lemma 7`  - `Subtype_Property.v/setRefl`
-+ `Lemma 8`  - `Subtype_Property.v/setTrans`
-+ `Lemma 9`  - `Subtype_Property.v/set2Sub`
-+ `Lemma 10`  - `Subtype_Property.v/ASub_refl`
-+ `Lemma 11`  - `Subtype_Property.v/ASub_trans`
-+ `Theorem 5`  - `Subtype_Property.v/sub2ASub`
++ `Theorem 5`  - `Subtype_Property.v/ASub2sub`
++ `Theorem 6`  - `Subtype_Property.v/sub2ASub`
