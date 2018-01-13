@@ -4,19 +4,19 @@ extend S [U*S] (first : S) (second : U) : S&U = first ,, second;
 
 type Person   = {name : String, male : Bool};
 type Loggable = {log : String};
-trait person(n : String, s : Bool) { self =>
+person(n : String ) (s : Bool) = trait  => {
   name = n;
   male = s
 };
-trait consoleLogger { self =>
+trait consoleLogger  => {
   log = "logging..."
 };
 
-jim = new[Person & Loggable] person("jim", true) & consoleLogger;
+jim = new[Person & Loggable] person "jim" true & consoleLogger;
 
 
 type Employee = {name : String, male : String};
-trait employee(n : String, s: String) { self =>
+employee(n : String )(s: String) = trait  => {
   name = n;
   male = s
 };
@@ -25,6 +25,6 @@ trait employee(n : String, s: String) { self =>
 
 -- The following type checks
 -- Though the type looks ugly
-fool = new[(T & {male : String}) & Person] employee("Tom", "yes") \ { name : String } & person("Jim", true);
+fool = new[{male : String} & Person] (employee "Tom" "yes") \ {name : String} & person "Jim" true;
 
 main = jim.log

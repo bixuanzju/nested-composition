@@ -1,8 +1,8 @@
 --> true
 
 type GCircuitAlg[In, Out] = {
-  identity : Int -> Out,
-  fan : Int -> Out,
+  identity : Double -> Out,
+  fan : Double -> Out,
   beside : In -> In -> Out,
   above : In -> In -> Out
 };
@@ -18,49 +18,49 @@ e1 : Circuit = { accept E f =
 };
 
 -- Width interpretation
-type Width = { width : Int };
+type Width = { width : Double };
 
-trait widthCircuit : CircuitAlg[Width] { self =>
-  identity n   = { width = n };
-  fan n        = { width = n };
-  beside c1 c2 = { width = c1.width + c2.width };
-  above c1 c2  = { width = c1.width }
-};
+trait widthCircuit [ self : Top] => {
+  identity (n : Double)   = { width = n };
+  fan (n : Double)        = { width = n };
+  beside (c1 : Width) (c2 : Width) = { width = c1.width + c2.width };
+  above (c1 : Width) (c2 : Width)  = { width = c1.width }
+} : CircuitAlg[Width] ;
 
-width (c : Circuit) : Int = (c.accept Width (new[CircuitAlg[Width]] widthCircuit)).width;
+width (c : Circuit) : Double = (c.accept Width (new[CircuitAlg[Width]] widthCircuit)).width;
 
 
 -- Depth interpretation
-type Depth = { depth : Int };
+type Depth = { depth : Double };
 
-max (x : Int) (y : Int) = if x > y then x else y;
+max (x : Double) (y : Double) = if x > y then x else y;
 
-trait depthCircuit : CircuitAlg[Depth] { self =>
-  identity n   = { depth = 0 };
-  fan n        = { depth = 1 };
-  beside c1 c2 = { depth = max c1.depth c2.depth };
-  above c1 c2  = { depth = c1.depth + c2.depth }
-};
+trait depthCircuit  => {
+  identity (n : Double)   = { depth = 0 };
+  fan (n : Double)        = { depth = 1 };
+  beside (c1 : Depth) (c2 : Depth) = { depth = max c1.depth c2.depth };
+  above (c1 : Depth) (c2 : Depth)  = { depth = c1.depth + c2.depth }
+} : CircuitAlg[Depth] ;
 
-depth (c : Circuit) : Int = (c.accept Depth (new[CircuitAlg[Depth]] depthCircuit)).depth;
+depth (c : Circuit) : Double = (c.accept Depth (new[CircuitAlg[Depth]] depthCircuit)).depth;
 
 -- Well-sized interpretation
 
 type WellSized = { wellSized : Bool };
 
-trait sizedCircuit : GCircuitAlg[Width & WellSized, WellSized] { self =>
-  identity n   = { wellSized = true };
-  fan n        = { wellSized = true };
-  beside c1 c2 = { wellSized = c1.wellSized && c2.wellSized };
-  above c1 c2  = { wellSized = c1.wellSized && c2.wellSized && c1.width == c2.width }
-};
+trait sizedCircuit  => {
+  identity (n : Double)   = { wellSized = true };
+  fan (n : Double)        = { wellSized = true };
+  beside (c1 : Width & WellSized) (c2 : Width & WellSized) = { wellSized = c1.wellSized && c2.wellSized };
+  above (c1 : Width & WellSized) (c2 : Width & WellSized)  = { wellSized = c1.wellSized && c2.wellSized && c1.width == c2.width }
+} : GCircuitAlg[Width & WellSized, WellSized] ;
 
-trait merge A [B * A] (a : Trait[CircuitAlg[A]], b : Trait[GCircuitAlg[A & B, B]]) : CircuitAlg[A & B] { self =>
-  identity n   = (new[CircuitAlg[A]] a).identity n ,, (new[GCircuitAlg[A & B, B]] b).identity n;
-  fan n        = (new[CircuitAlg[A]] a).fan n ,, (new[GCircuitAlg[A & B, B]] b).fan n;
-  beside c1 c2 = (new[CircuitAlg[A]] a).beside c1 c2 ,, (new[GCircuitAlg[A & B, B]] b).beside c1 c2;
-  above c1 c2  = (new[CircuitAlg[A]] a).above c1 c2 ,, (new[GCircuitAlg[A & B, B]] b).above c1 c2
-};
+merge A [B * A] (a : Trait[CircuitAlg[A]]) (b : Trait[GCircuitAlg[A & B, B]]) = trait  =>  {
+  identity (n : Double)   = (new[CircuitAlg[A]] a).identity n ,, (new[GCircuitAlg[A & B, B]] b).identity n;
+  fan (n : Double)        = (new[CircuitAlg[A]] a).fan n ,, (new[GCircuitAlg[A & B, B]] b).fan n;
+  beside (c1 : A & B) (c2 : A & B) = (new[CircuitAlg[A]] a).beside c1 c2 ,, (new[GCircuitAlg[A & B, B]] b).beside c1 c2;
+  above (c1 : A & B) (c2 : A & B)  = (new[CircuitAlg[A]] a).above c1 c2 ,, (new[GCircuitAlg[A & B, B]] b).above c1 c2
+} : CircuitAlg[A & B];
 
 alg = merge Width WellSized widthCircuit sizedCircuit;
 

@@ -1,18 +1,20 @@
---> 3.0
+--> "(3.0, 4.0)"
 
+type Point = { x_point : Double, get : Top -> String };
 
-type Point = { x : Int, y : Int };
-trait point(x : Int, y: Int) { self : Point =>
-  x = x;
-  y = y
-};
+point (x : Double) = trait [self : Point] => {
+  x_point = x;
+  get (_ : Top) = self.x_point.toString
+} ;
 
-type Point3D = Point & { z : Int };
+type Point2D = Point & { y_point : Double };
 
--- BEGIN_DESUGAR1
-trait point3D(x: Int, y : Int) inherits point(x,y) { self : Point3D => z = self.x };
--- END_DESUGAR1
+point2D (x: Double) (y : Double) =
+  trait [self : Point2D] inherits (point x) \ {get : Top -> String} => {
+    y_point = y;
+    get (_ : Top) = "(" ++ self.x_point.toString ++ ", " ++ self.y_point.toString ++ ")"
+  } ;
 
-test = new[Point3D] point3D(3,4);
+a_point = new[Point2D] point2D 3 4;
 
-main = test.x
+main = a_point.get ()

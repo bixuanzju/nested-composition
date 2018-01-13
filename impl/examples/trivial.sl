@@ -3,33 +3,37 @@
 -- Examples in "The Expression Problem, Trivially!"
 
 
-type IEval = {eval : Int};
-trait lit (x : Int) { self : IEval =>
-  eval : Int = x
+type IEval = {eval : Double};
+lit (x : Double) = trait [self : IEval] => {
+  eval = x
 };
-trait add (e1 : IEval, e2 : IEval) { self : IEval =>
-  eval : Int = e1.eval + e2.eval
+
+add (e1 : IEval) (e2 : IEval) = trait [self : IEval] => {
+  eval = e1.eval + e2.eval
 };
 
 
-trait sub (e1 : IEval, e2 : IEval) { self : IEval =>
-  eval : Int = e1.eval - e2.eval
+sub (e1 : IEval) (e2 : IEval) = trait [self : IEval] => {
+  eval  = e1.eval - e2.eval
 };
 
 type IPrint = IEval & { print : String };
-trait litP (x : Int) : IPrint inherits lit(x) { self : IPrint =>
+
+litP (x : Double) = trait [self : IPrint] inherits lit x => {
   print = x.toString
 };
-trait addP (e1 : IPrint, e2 : IPrint) : IPrint inherits add(e1,e2)  { self : IPrint =>
+
+addP (e1 : IPrint) (e2 : IPrint) = trait [self : IPrint] inherits add e1 e2 => {
   print = "(" ++ e1.print ++ " + " ++ e2.print ++ ")"
 };
-trait subP (e1 : IPrint, e2 : IPrint) : IPrint inherits sub(e1,e2)  { self : IPrint =>
+
+subP (e1 : IPrint ) ( e2 : IPrint) = trait [self : IPrint] inherits sub e1 e2 => {
   print = "(" ++ e1.print ++ " - " ++ e2.print ++ ")"
 };
 
 
-l1 = new[IPrint] litP(4);
-l2 = new[IPrint] litP(3);
-l3 = new[IPrint] addP(l1, l2);
-e  = new[IPrint] subP(l3, l2);
+l1 = new[IPrint] litP 4;
+l2 = new[IPrint] litP 3;
+l3 = new[IPrint] addP l1 l2;
+e  = new[IPrint] subP l3 l2;
 main = e.print ++ " = " ++ e.eval.toString

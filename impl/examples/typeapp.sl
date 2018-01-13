@@ -2,6 +2,6 @@
 
 type IdType [B] = B -> B;
 
-id : IdType [Int] = \x -> x;
+id : IdType [Double] = \x -> x;
 
 main = id 3

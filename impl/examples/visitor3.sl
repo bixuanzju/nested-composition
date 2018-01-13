@@ -1,24 +1,24 @@
 --> "((5.0 - (2.0 + 3.0)) + 3.0) = 3.0"
 
 type ExpAlg[E] = {
-  lit : Int -> E,
+  lit : Double -> E,
   add : E -> E -> E
 };
 
 type Exp = { accept : forall E . ExpAlg[E] -> E };
 
-type IEval = { eval : Int };
+type IEval = { eval : Double };
 
-trait evalAlg : ExpAlg[IEval] { self =>
-  lit x   = { eval = x };
-  add x y = { eval = x.eval + y.eval }
-};
+trait evalAlg  => {
+  lit (x : Double)   = { eval = x };
+  add (x : IEval) (y : IEval) = { eval = x.eval + y.eval }
+} : ExpAlg[IEval];
 
 
 type SubExpAlg[E] = ExpAlg[E] & { sub : E -> E -> E };
-trait subEvalAlg : SubExpAlg[IEval]  inherits evalAlg  { self =>
-  sub x y = { eval = x.eval - y.eval }
-};
+trait subEvalAlg   inherits evalAlg  => {
+  sub (x : IEval) (y : IEval) = { eval = x.eval - y.eval }
+} : SubExpAlg[IEval];
 type ExtExp = { accept: forall E. SubExpAlg[E] -> E };
 
 
@@ -26,15 +26,15 @@ type ExtExp = { accept: forall E. SubExpAlg[E] -> E };
 type IPrint = { print : String };
 
 
-trait printAlg : SubExpAlg[IPrint] { self =>
-  lit x   = { print = x.toString };
-  add x y = { print = "(" ++ x.print ++ " + " ++ y.print ++ ")" };
-  sub x y = { print = "(" ++ x.print ++ " - " ++ y.print ++ ")" }
-};
+trait printAlg [ self : Top ] => {
+  lit (x : Double)   = { print = x.toString };
+  add (x : IPrint) (y : IPrint) = { print = "(" ++ x.print ++ " + " ++ y.print ++ ")" };
+  sub (x : IPrint) (y : IPrint) = { print = "(" ++ x.print ++ " - " ++ y.print ++ ")" }
+} : SubExpAlg[IPrint];
 
 
 
-lit (n : Int) : Exp = {
+lit (n : Double) : Exp = {
   accept E f = f.lit n
 };
 add (e1 : Exp) (e2 : Exp) : Exp = {
@@ -45,16 +45,9 @@ sub (e1 : ExtExp) (e2 : ExtExp) : ExtExp = {
 };
 
 
-trait combine1 A [B * A] (f : Trait[SubExpAlg[A]] , g : Trait[SubExpAlg[B]]) { self =>
-  lit (x : Int)   = (new[SubExpAlg[A]] f).lit x   ,, (new[SubExpAlg[B]] g).lit x;
-  add (x : A & B) (y : A & B) = (new[SubExpAlg[A]] f).add x y ,, (new[SubExpAlg[B]] g).add x y;
-  sub (x : A & B) (y : A & B) = (new[SubExpAlg[A]] f).sub x y ,, (new[SubExpAlg[B]] g).sub x y
-};
-
-
 
 -- BEGIN_COMBINE_DEF
-trait combine A [B * A] (f : Trait[SubExpAlg[A]], g : Trait[SubExpAlg[B]]) inherits f & g { };
+combine A [B * A] (f : Trait[Top, SubExpAlg[A]]) (g : Trait[Top, SubExpAlg[B]]) = trait  inherits f & g => { };
 -- END_COMBINE_DEF
 
 e1 : Exp = {accept E f = f.add (f.lit 2) (f.lit 3)};

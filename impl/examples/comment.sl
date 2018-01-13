@@ -1,13 +1,13 @@
 --> "Have fun!4.0"
 
 type Comment = { content : String };
-trait comment(content : String) { self : Comment =>
+comment (content : String) = trait [self : Comment] => {
   content = content
 };
 
 
-type Up = { upvotes : Int };
-trait up(upvotes : Int) { self : Up =>
+type Up = { upvotes : Double };
+up (upvotes : Double) = trait  [self : Up] => {
   upvotes = upvotes
 };
 

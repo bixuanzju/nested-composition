@@ -1,7 +1,7 @@
 --> 192.0
 
 
-remove [B * {low : Int}] (x : B & {low : Int}) : B = x;
+remove [B * {low : Double}] (x : B & {low : Double}) : B = x;
 
 
-main = remove {open : Int} {open = 192, low=189}
+main = remove {open : Double} {open = 192, low=189}
