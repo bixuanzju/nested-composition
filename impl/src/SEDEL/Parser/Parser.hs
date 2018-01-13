@@ -1,32 +1,29 @@
-module SEDEL.Parser.Parser (parseModule, parseExpr) where
+module SEDEL.Parser.Parser (parseModule) where
 
 import           Control.Arrow (first, second)
-import           Control.Monad (void, liftM3)
+import           Data.Functor (($>))
 import           Data.List (foldl', foldl1')
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe, isJust)
 import           Data.Scientific (toRealFloat)
+import           Data.Void
 import           Text.Megaparsec
+import           Text.Megaparsec.Char
+import qualified Text.Megaparsec.Char.Lexer as L
 import           Text.Megaparsec.Expr
-import qualified Text.Megaparsec.Lexer as L
-import           Text.Megaparsec.String
 import           Unbound.Generics.LocallyNameless
 
 import           SEDEL.Common
 import           SEDEL.Source.Syntax
 import           SEDEL.Util
 
+
+type Parser = Parsec Void String
+
 parseModule :: String -> Either String Module
 parseModule s =
   case runParser (whole prog) "" s of
     Left err -> Left $ parseErrorPretty err
     Right e -> Right e
-
-
-parseExpr :: String -> Either String Module
-parseExpr s =
-  case runParser (whole expr) "" s of
-    Left err -> Left $ parseErrorPretty err
-    Right e -> Right (Module [] (DefDecl (TmBind "main" [] [] e Nothing)))
 
 
 -- | Top-level parsers (should consume all input)
@@ -41,7 +38,7 @@ prog :: Parser Module
 prog = do
   decls <- sepEndBy decl semi
   m <- optional mainDecl
-  let d = fromMaybe (DefDecl (TmBind "main" [] [] Top Nothing)) m
+  let d = fromMaybe (DefDecl (TmBind "main" [] [] Top Nothing False)) m
   return $ Module decls d
 
 mainDecl :: Parser SDecl
@@ -49,7 +46,7 @@ mainDecl = do
   rword "main"
   symbol "="
   e <- expr
-  return $ DefDecl (TmBind "main" [] [] e Nothing)
+  return $ DefDecl (TmBind "main" [] [] e Nothing False)
 
 
 decl :: Parser SDecl
@@ -59,7 +56,7 @@ traitDecl :: Parser SDecl
 traitDecl = do
   (tr, n) <- pTrait
   case n of
-    Just n' -> return $ DefDecl (TmBind n' [] [] tr Nothing)
+    Just n' -> return $ DefDecl (TmBind n' [] [] tr Nothing False)
     Nothing -> fail "Need trait name"
 
 sedel :: Parser SDecl
@@ -67,31 +64,33 @@ sedel = DefDecl <$> tmBind <|> TypeDecl <$> tyBind
 
 tmBind :: Parser TmBind
 tmBind = do
+  flag <- optional $ rword "override"
   n <- lidentifier
   ts <- many ctyparam
   xs <- many param
   ret <- optional (colon *> pType)
   symbol "="
   e <- expr
-  return $ TmBind n (map (first s2n) ts) (map (first s2n) xs) e ret
-
-tmBind2 :: Parser TmBind
-tmBind2 = do
-  m <- lidentifier
-  symbol "@"
-  (n, ts, xs) <- parens $ liftM3 (,,) lidentifier (many ctyparam) (many param)
-  tts <- many ctyparam
-  xxs <- many param
-  ret <- optional (colon *> pType)
-  symbol "="
-  e <- expr
   return $
-    TmBind
-      n
-      (map (first s2n) ts)
-      (map (first s2n) xs)
-      (DRec' (TmBind m (map (first s2n) tts) (map (first s2n) xxs) e ret))
-      Nothing
+    TmBind n (map (first s2n) ts) (map (first s2n) xs) e ret (isJust flag)
+
+-- tmBind2 :: Parser TmBind
+-- tmBind2 = do
+--   m <- lidentifier
+--   symbol "@"
+--   (n, ts, xs) <- parens $ liftM3 (,,) lidentifier (many ctyparam) (many param)
+--   tts <- many ctyparam
+--   xxs <- many param
+--   ret <- optional (colon *> pType)
+--   symbol "="
+--   e <- expr
+--   return $
+--     TmBind
+--       n
+--       (map (first s2n) ts)
+--       (map (first s2n) xs)
+--       (DRec' (TmBind m (map (first s2n) tts) (map (first s2n) xxs) e ret))
+--       Nothing
 
 
 tyBind :: Parser TypeBind
@@ -108,7 +107,9 @@ tyBind = do
 ------------------------------------------------------------------------
 
 expr :: Parser Expr
-expr = makeExprParser term pOperators
+expr = do
+  p <- getPosition
+  Pos p <$> makeExprParser term pOperators
 
 term :: Parser Expr
 term = postfixChain factor (try fapp <|> bapp)
@@ -149,19 +150,21 @@ rmOperator = do
           colon
           t <- pType
           return (l, t))
-  return (\e -> Remove e l t)
+  return (\e -> Remove e l (Just t))
 
 atom :: Parser Expr
 atom =
   choice
-    [ pLambda
+    [ try pLambda <|> pLambda2
     , pBLambda
+    , pLetrec
     , pLet
     , pIf
     , fst <$> pTrait
     , pNew
     , LitV <$> float
     , StrV <$> stringLiteral
+    , topVal
     , evar <$> lidentifier
     , record
     , bconst
@@ -174,8 +177,9 @@ record = braces (mkRecds' <$> sepBy1 tmBind comma)
 bconst :: Parser Expr
 bconst =
   choice
-    [ rword "true" *> pure (BoolV True)
-    , rword "false" *> pure (BoolV False)
+    [ rword "true" $> BoolV True
+    , rword "false" $> BoolV False
+    , rword "undefined" $> Bot
     ]
 
 pLambda :: Parser Expr
@@ -185,6 +189,17 @@ pLambda = do
   symbol "->"
   e <- expr
   return $ foldr elam (elam (last xs) e) (init xs)
+
+-- Annotated lambdas
+pLambda2 :: Parser Expr
+pLambda2 = do
+  symbol "\\"
+  xs <- parens tparam
+  symbol "->"
+  e <- expr
+  return $ elam2  xs e
+
+
 
 pBLambda :: Parser Expr
 pBLambda = do
@@ -198,60 +213,48 @@ pBLambda = do
 pTrait :: Parser (Expr, Maybe String)
 pTrait = do
   rword "trait"
-  n <- optional lidentifier
-  ts <- many ctyparam
-  xs <- fromMaybe [] <$> optional (parens (sepBy1 tparam comma))
+  n <- optional lidentifier -- optional trait name
+  s <- optional (brackets pSelf) -- self reference
+  i <- optional inherits -- optional inheritance
+  symbol "=>"
+  body <- braces (sepBy tmBind semi) -- trait body
   ret <- optional (colon *> pType)
-  i <- optional inherits
-  (self, sty, body) <- braces (pTraitBody <|> return ("self", TopT, []))
   return
     ( AnonyTrait
         (TraitDef
-           (self, sty)
+           (fromMaybe ("*self", TopT) s)
            (fromMaybe [] i)
            ret
-           (map (first s2n) ts)
-           (map (first s2n) xs)
            body)
     , n)
 
-pTraitBody :: Parser (String, Type, [TmBind])
-pTraitBody = do
+
+pSelf :: Parser (String, Type)
+pSelf = do
   n <- lidentifier
-  ret <- optional (colon *> pType)
-  symbol "=>"
-  decls <- sepBy1 (try tmBind <|> tmBind2) semi
-  return (n, fromMaybe TopT ret, decls)
+  ret <- colon *> pType
+  return (n, ret)
+
 
 pNew :: Parser Expr
 pNew = do
   rword "new"
   t <- brackets pType
-  cs <- pTraitConstructs
+  cs <- pExprs
   return $ transNew t cs
 
 inherits :: Parser [Expr]
 inherits = do
   rword "inherits"
-  pTraitConstructs
+  pExprs
 
-pTraitConstructs :: Parser [Expr]
-pTraitConstructs = sepBy1 pTraitConstruct (symbol "&")
+pExprs :: Parser [Expr]
+pExprs = sepBy1 expr (symbol "&")
 
-pTraitConstruct :: Parser Expr
-pTraitConstruct = do
-  n <- lidentifier
-  ts <- fromMaybe [] <$> optional tyList
-  xs <- fromMaybe [] <$> optional pArgs
-  rm <- optional rmOperator
-  let res = App (foldl' App (foldl' TApp (evar n) ts) xs) (evar "self")
-  case rm of
-    Nothing -> return res
-    Just f -> return (f res)
 
-pLet :: Parser Expr
-pLet = do
-  rword "let"
+pLetrec :: Parser Expr
+pLetrec = do
+  rword "letrec"
   n <- lidentifier
   colon
   t <- pType
@@ -259,7 +262,17 @@ pLet = do
   e1 <- expr
   rword "in"
   e2 <- expr
-  return $ elet n t e1 e2
+  return $ eletr n t e1 e2
+
+pLet :: Parser Expr
+pLet = do
+  rword "let"
+  n <- lidentifier
+  symbol "="
+  e1 <- expr
+  rword "in"
+  e2 <- expr
+  return $ elet n e1 e2
 
 pIf :: Parser Expr
 pIf = do
@@ -290,6 +303,7 @@ pOperators =
   , [InfixL (PrimOp (Logical LAnd) <$ symbol "&&")]
   , [InfixL (PrimOp (Logical LOr) <$ symbol "||")]
   , [InfixL (Merge <$ symbol ",,")]
+  , [InfixN (App <$ symbol "^")]
   ]
 
 
@@ -337,10 +351,11 @@ recordType = braces (mkRecdsT <$> sepBy1 tparam comma)
 tconst :: Parser Type
 tconst =
   choice
-    [ rword "Int" *> pure NumT
-    , rword "String" *> pure StringT
-    , rword "Bool" *> pure BoolT
-    , rword "T" *> pure TopT
+    [ rword "Double" $> NumT
+    , rword "Int" $> NumT
+    , rword "String" $> StringT
+    , rword "Bool" $> BoolT
+    , rword "Top" $> TopT
     ]
 
 
@@ -376,7 +391,7 @@ param :: Parser (String, Maybe Type)
 param =
   choice
     [ (lidentifier <|> symbol "_") >>= \n -> return (n, Nothing)
-    , parens $ tparam >>= pure . second Just
+    , parens $ second Just <$> tparam
     ]
 
 
@@ -411,9 +426,11 @@ ctyparam =
 ------------------------------------------------------------------------
 
 sc :: Parser ()
-sc = L.space (void spaceChar) lineCmnt blockCmnt
-  where lineCmnt  = L.skipLineComment "--"
-        blockCmnt = L.skipBlockComment "{-" "-}"
+sc = L.space space1 lineCmnt blockCmnt
+  where
+    lineCmnt  = L.skipLineComment "--"
+    blockCmnt = L.skipBlockComment "{-" "-}"
+
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
@@ -430,11 +447,11 @@ brackets = between (symbol "[") (symbol "]")
 braces :: Parser a -> Parser a
 braces = between (symbol "{") (symbol "}")
 
-integer :: Parser Integer
-integer = lexeme L.integer
-
 float :: Parser Double
-float = lexeme $ toRealFloat <$> L.number
+float = lexeme (toRealFloat <$> L.scientific)
+
+topVal :: Parser Expr
+topVal = symbol "()" >> return Top
 
 stringLiteral :: Parser String
 stringLiteral = lexeme $ char '"' >> manyTill L.charLiteral (char '"')
@@ -467,6 +484,7 @@ rws =
   , "then"
   , "else"
   , "let"
+  , "letrec"
   , "in"
   , "type"
   , "defrec"
@@ -477,12 +495,14 @@ rws =
   , "main"
   , "inherits"
   , "undefined"
+  , "Double"
   , "Int"
   , "String"
   , "Bool"
   , "true"
   , "false"
-  , "T"
+  , "Top"
+  , "override"
   ]
 
 
@@ -496,7 +516,7 @@ identifier s = (lexeme . try) (p >>= check)
         else return x
 
 identChar :: Parser Char
-identChar = alphaNumChar <|> oneOf "_#'"
+identChar = alphaNumChar <|> oneOf "_#'%"
 
 lidentifier :: Parser String
 lidentifier = identifier lowerChar

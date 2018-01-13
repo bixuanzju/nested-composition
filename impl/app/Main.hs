@@ -1,28 +1,37 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+
 module Main where
 
-import           Control.Applicative
 import           Control.Exception (SomeException, try)
 import           Control.Monad.State.Strict
 import           Data.List (isPrefixOf)
+import           Data.Maybe (fromMaybe)
+import qualified Data.Text.IO as TIO
+import           System.IO                    (hPutStrLn, stderr)
+import           Data.Text.Prettyprint.Doc ((<+>), (<>))
+import qualified Data.Text.Prettyprint.Doc as Pretty
+import qualified Data.Text.Prettyprint.Doc.Render.Text as Pretty
+import           System.Console.GetOpt
 import           System.Console.Repline
 import           System.Environment (getArgs)
 import           System.Exit
-import           Text.PrettyPrint.ANSI.Leijen hiding (Pretty)
 
+import           SEDEL
 import           SEDEL.Environment
 import           SEDEL.Parser.Parser
+import           SEDEL.Source.Desugar
+import           SEDEL.Source.Syntax
 import           SEDEL.PrettyPrint
-import           SEDEL.Source.Typing
-import qualified SEDEL.Target.CBN as CBN
 
-newtype ReplState = ReplState
+
+data ReplState = ReplState
   { replCtx :: Ctx
+  , verbose :: Bool
   }
 
 initState :: ReplState
-initState = ReplState {
-  replCtx = emptyCtx
-  }
+initState = ReplState {replCtx = emptyCtx, verbose = False}
 
 type Repl a = HaskelineT (StateT ReplState IO) a
 
@@ -39,25 +48,31 @@ readTry = liftIO . try
 putMsg :: String -> Repl ()
 putMsg = liftIO . putStrLn
 
-ppMsg :: Doc -> Repl ()
-ppMsg d = liftIO . putDoc $ d <> line
+
+prettyOpts :: Pretty.LayoutOptions
+prettyOpts =
+    Pretty.defaultLayoutOptions
+    { Pretty.layoutPageWidth = Pretty.AvailablePerLine 80 1.0 }
+
+ppMsg :: FDoc -> Repl ()
+ppMsg d =
+  liftIO . TIO.putStrLn $ Pretty.renderStrict (Pretty.layoutSmart prettyOpts d)
 
 -- Execution
 exec :: String -> Repl ()
 exec source =
-  case  parseModule source <|> parseExpr source  of
-    Left err ->   ppMsg $ warn "Syntax error" <+> text err
+  case parseModule source of
+    Left err -> ppMsg $ "Syntax error" <+> Pretty.pretty err
     Right abt -> do
-      env <- getCtx
-      let res = runTcMonad (replCtx env) (tcModule abt)
+      ctx <- getCtx
+      res <- liftIO $ driver (replCtx ctx) abt
       case res of
-        Right (typ, tar, tEnv) -> do
-          putMsg "Typing result"
-          ppMsg $ colon <+> blue (pprint typ)
-          let r = CBN.evaluate tEnv tar
-          putMsg "\nEvaluation result"
-          ppMsg $ text "=>" <+> blue (text (show r))
-        Left err -> ppMsg err
+        Right r -> ppMsg (render r)
+        Left err -> do
+          when (verbose ctx) $ do
+            putMsg "AST after desugaring:"
+            ppMsg $ "=>" <+> Pretty.pretty (show (desugar (moduleEntries abt))) <> Pretty.line
+          ppMsg err
 
 
 -- :load command
@@ -65,10 +80,8 @@ load :: [String] -> Repl ()
 load args = do
   contents <- readTry $ readFile (unwords args)
   case contents of
-    Left err -> ppMsg $ warn "Load file error" <+> text (show err)
-    Right s -> do
-      resetCtx
-      exec s
+    Left err -> ppMsg $ "Load file error" <+> Pretty.pretty (show err)
+    Right s -> exec s
 
 -- :quit command
 quit :: a -> Repl ()
@@ -77,10 +90,8 @@ quit _ = liftIO exitSuccess
 
 resetCtx :: Repl ()
 resetCtx = do
-  st <- getCtx
-  putCtx ReplState {
-    replCtx = emptyCtx
-    }
+  _ <- getCtx
+  putCtx ReplState {replCtx = emptyCtx, verbose = False}
 
 reset :: [String] -> Repl ()
 reset _ = do
@@ -89,8 +100,9 @@ reset _ = do
 
 debug :: [String] -> Repl ()
 debug _ = do
-  ReplState ctx <- getCtx
-  putMsg "Not implemented!"
+  st <- getCtx
+  putCtx ReplState {replCtx = replCtx st, verbose = True}
+  putMsg "Enter debug mode"
 
 
 -- Prefix tab completer
@@ -104,24 +116,108 @@ comp n = do
   return $ filter (isPrefixOf n) cmds
 
 
+optionsWithHelp :: [(String, [String] -> Repl (), String)]
+optionsWithHelp =
+  [ ("help", help, "Show this text")
+  , ("?", help, "Show help")
+  , ("quit", quit, "Quit interactive")
+  , ("load", load, "Load file and evaluate")
+  , ("reset", reset, "Reset configuration")
+  , ("debug", debug, "Toggle debugging")
+  ]
+
+help :: [String] -> Repl ()
+help _ = putMsg . unlines $
+  "Usage:" : helpText
+
+helpText :: [String]
+helpText =
+  map
+    (\(c, _, h) -> " :" ++ c ++ replicate (10 - length c) ' ' ++ h)
+    optionsWithHelp
+
 options :: [(String, [String] -> Repl ())]
-options = [("load", load), ("reset", reset), ("quit", quit), ("debug", debug)]
+options = map (\(a, b, _) -> (a, b)) optionsWithHelp
+  -- [("load", load), ("reset", reset), ("quit", quit), ("debug", debug)]
 
 shell :: Repl a -> IO ()
 shell pre =
   flip evalStateT initState $
   evalRepl "> " exec options (Prefix (wordCompleter comp) defaultMatcher) pre
 
+verStr :: String
+verStr = "SEDEL, version 0.1"
 
 ini :: Repl ()
-ini = putMsg "Welcome!"
+ini = putMsg $ verStr ++ ", :? for help"
 
 -- Top level
+
+data Flag
+  = Version
+  | Help
+  | Run
+  | Input String
+  | Output String
+  deriving (Eq, Show)
+
+flags :: [OptDescr Flag]
+flags = [
+  Option ['h'] ["help"]    (NoArg Help)               "show this help",
+  Option ['r'] ["run"]     (NoArg Run)                "run the code",
+  Option ['v'] ["version"] (NoArg Version)            "show version info",
+  Option ['i'] ["input"]   (OptArg makeOutput "FILE") "input source file (or without -i)",
+  Option ['o'] ["output"]  (OptArg makeOutput "FILE") "output javascript file (optional)"
+  ]
+
+makeOutput :: Maybe String -> Flag
+makeOutput ms = Output (fromMaybe "" ms)
+
+exitSucc :: Bool -> String -> IO ()
+exitSucc ok s = do
+  hPutStrLn stderr s
+  exitWith $ if ok then ExitSuccess else ExitFailure 1
+
+parseArgs :: [String] -> IO ()
+parseArgs args =
+  case getOpt RequireOrder flags args of
+    (opts, nonOpts, [])
+      | Help `elem` opts -> exitSucc True (usageInfo header flags)
+      | Version `elem` opts -> exitSucc True verStr
+      | otherwise -> do
+          let isRun = Run `elem` opts
+              findInput [] = ""
+              findInput (x:xs) = case x of
+                Input f -> f
+                _ -> findInput xs
+              findOutput [] = ""
+              findOutput (x:xs) = case x of
+                Output f -> f
+                _ -> findInput xs
+              inputArg = findInput opts
+              inputPath
+                | not (null inputArg) = inputArg
+                | not (null nonOpts) = head nonOpts
+                | otherwise = ""
+              outputArg = findOutput opts
+              -- outputPath = if null outputArg then
+              --                dropExtension inputPath ++ fileExt else outputArg
+          if null inputPath then do
+            putStrLn "missing arguments: input filename is empty"
+            exitWith (ExitFailure 1)
+            else do res <- readAndEval inputPath
+                    TIO.putStrLn (Pretty.renderStrict (Pretty.layoutSmart prettyOpts res))
+            -- compile isDebug isRun isHask inputPath $
+            --      if inputPath == outputPath then inputPath ++ fileExt else outputPath
+    (_, _, msgs)   ->
+      exitSucc False $ concat msgs ++ usageInfo header flags
+  where header = "To start the REPL, run the program without parameters.\n" ++
+          "Usage: sedel [OPTIONS] [FILE]"
+
 
 main :: IO ()
 main = do
   args <- getArgs
-  case args of
-    [] -> shell ini
-    [fname] -> shell (load [fname])
-    _ -> putStrLn "invalid arguments"
+  if null args
+    then shell ini
+    else parseArgs args

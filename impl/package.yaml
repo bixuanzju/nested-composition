@@ -11,15 +11,17 @@ dependencies:
   - ansi-wl-pprint
   - base >=4.7 && <5
   - mtl
-  - repline
+  - haskeline
   - array
   - containers
-  - protolude
+  - protolude >= 0.2
   - text
   - filepath
   - directory
-  - megaparsec
+  - megaparsec >= 6.0
   - scientific
+  - prettyprinter
+  - repline
 
 ghc-options:
   - -fwarn-tabs
@@ -37,19 +39,17 @@ library:
     - SEDEL.PrettyPrint
     - SEDEL.Source.Syntax
     - SEDEL.Source.Subtyping
-    - SEDEL.Source.Typing
+    - SEDEL.Source.TypeCheck
     - SEDEL.Source.Desugar
-    - SEDEL.Source.SrcLoc
     - SEDEL.Target.Syntax
-    - SEDEL.Target.Dynamics
-    - SEDEL.Target.CBN
+    - SEDEL.Target.Eval
     - SEDEL.Util
     - SEDEL
   dependencies:
     - unbound-generics
 
 executables:
-  SEDEL-exe:
+  sedel:
     main: Main.hs
     source-dirs: app
     ghc-options:

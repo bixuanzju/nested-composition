@@ -1,3 +1,5 @@
+all: build run doc
+
 run:
 	@stack exec SEDEL-exe
 

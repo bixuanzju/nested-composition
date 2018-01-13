@@ -1,215 +1,345 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances, ExistentialQuantification, OverloadedStrings, NoImplicitPrelude, RankNTypes #-}
+
 
 module SEDEL.PrettyPrint
   ( pprint
-  , warn
-  , info
+  , FPretty(..)
+  , FDoc
+  , D(..)
   ) where
 
-import           Text.PrettyPrint.ANSI.Leijen hiding (Pretty, (<$>))
+import           Data.Text.Prettyprint.Doc (Doc, (<+>), Pretty)
+import qualified Data.Text.Prettyprint.Doc as Pretty
 import           Unbound.Generics.LocallyNameless
+import           Protolude
+import           Text.Megaparsec
 
 import           SEDEL.Common
 import qualified SEDEL.Source.Syntax as S
-import qualified SEDEL.Target.Syntax as T
+import qualified Data.List
+
+instance Pretty SourcePos where
+  pretty (SourcePos _ line col) =
+    Pretty.pretty (unPos line) <> Pretty.colon <> Pretty.pretty (unPos col) <>
+    Pretty.colon
 
 
-class Pretty p where
-  ppr :: (Applicative m, LFresh m) => p -> m Doc
+data FAnn = FAnn
+
+type FDoc = Doc FAnn
+
+class FPretty p where
+  ppr :: (Applicative m, LFresh m) => p -> m FDoc
 
 
-instance Pretty ArithOp where
-  ppr Add = return $ text "+"
-  ppr Mul = return $ text "*"
-  ppr Sub = return $ text "-"
-  ppr Div = return $ text "/"
+-- | Error message quoting
+data D = DS FDoc -- ^ String literal
+       | forall a . FPretty a => DD a -- ^ Displayable value
 
-instance Pretty CompOp where
-  ppr Equ = return $ text "=="
-  ppr Neq = return $ text "!="
-  ppr Lt = return $ text "<"
-  ppr Gt = return $ text ">"
+instance FPretty D where
+  ppr (DS s) = return s
+  ppr (DD d) = ppr d
 
-instance Pretty LogicalOp where
-  ppr LAnd = return $ text "&&"
-  ppr LOr = return $ text "||"
+instance FPretty [D] where
+  ppr dl = Pretty.sep <$> mapM ppr dl
 
 
-instance Pretty Operation where
+instance FPretty ArithOp where
+  ppr Add = return $ "+"
+  ppr Mul = return $ "*"
+  ppr Sub = return $ "-"
+  ppr Div = return $ "/"
+
+instance FPretty CompOp where
+  ppr Equ = return $ "=="
+  ppr Neq = return $ "!="
+  ppr Lt = return $ "<"
+  ppr Gt = return $ ">"
+
+instance FPretty LogicalOp where
+  ppr LAnd = return $ "&&"
+  ppr LOr = return $ "||"
+
+
+instance FPretty Operation where
   ppr (Arith a) = ppr a
   ppr (Logical a) = ppr a
   ppr (Comp a) = ppr a
-  ppr Append = return $ text "++"
+  ppr Append = return $ "++"
 
 
-instance Pretty S.Kind where
-  ppr S.Star = return $ text "star"
+instance FPretty S.Kind where
+  ppr S.Star = return $ "star"
   ppr (S.KArrow k1 k2) = do
     k1' <- ppr k1
     k2' <- ppr k2
-    return $ k1' <+> text "->" <+> k2'
+    return $ k1' <+> "->" <+> k2'
 
-instance Pretty S.Type where
+instance FPretty S.Type where
   ppr (S.Arr t1 t2) = do
     t1' <- ppr t1
     t2' <- ppr t2
-    return $ parens (t1' <+> text "->" <+> t2')
-  ppr S.NumT = return $ text "Int"
-  ppr S.BoolT = return $ text "Bool"
-  ppr S.StringT = return $ text "String"
+    return $ Pretty.parens (t1' <+> "->" <+> t2')
+  ppr S.NumT = return $ "Double"
+  ppr S.BoolT = return $ "Bool"
+  ppr S.StringT = return $ "String"
   ppr (S.And t1 t2) = do
     t1' <- ppr t1
     t2' <- ppr t2
-    return $ parens (t1' <+> text "&" <+> t2')
-  ppr (S.TVar x) = return . text . name2String $ x
+    return $ Pretty.parens (t1' <+> "&" <+> t2')
+  ppr (S.TVar x) = return (Pretty.pretty x)
   ppr (S.DForall b) =
     lunbind b $ \((x, Embed a), t) -> do
       a' <- ppr a
       t' <- ppr t
       return
-        (parens $
-         text "∀" <> parens (text (name2String x) <> text "*" <> a') <+> dot <+> t')
+        (Pretty.parens $
+         "∀" <> Pretty.parens (Pretty.pretty x <> "*" <> a') <+>
+         Pretty.dot <+> t')
   ppr (S.SRecT l t) = do
     t' <- ppr t
-    return (braces $ text l <+> colon <+> t')
-  ppr S.TopT = return $ text "T"
+    return (Pretty.braces $ Pretty.pretty l <+> Pretty.colon <+> t')
+  ppr S.TopT = return $ "Top"
   ppr (S.OpAbs b) =
-    lunbind b $ \((x, k), t) -> do
+    lunbind b $ \((x, Embed k), t) -> do
       t' <- ppr t
+      k' <- ppr k
       return $
-        parens
-          (text "Lam" <>
-           parens (text (name2String x) <> text ":" <> text (show k)) <+>
-           dot <+> t')
+        Pretty.parens
+          ("Lam" <> Pretty.parens (Pretty.pretty x <> ":" <> k') <+>
+           Pretty.dot <+> t')
   ppr (S.OpApp a b) = do
     a' <- ppr a
     b' <- ppr b
-    return $ parens (a' <+> brackets b')
+    return $ Pretty.parens (a' <+> Pretty.brackets b')
 
 
-instance Pretty S.Expr where
+-- deciding whether to add parens to the func of an application
+wrapf :: S.Expr -> FDoc -> FDoc
+wrapf f = case f of
+  S.Var _         -> identity
+  S.App _ _       -> identity
+
+  S.Pos _ a       -> wrapf a
+  _             -> Pretty.parens
+
+-- deciding whether to add parens to the arg of an application
+wraparg :: S.Expr -> FDoc -> FDoc
+wraparg x = case x of
+  S.Var _       -> identity
+  S.LitV _ -> identity
+  S.BoolV _ -> identity
+  S.StrV _ -> identity
+  S.Top -> identity
+  _ -> Pretty.parens
+
+instance FPretty S.Expr where
   ppr (S.Anno e t) = do
     e' <- ppr e
     t' <- ppr t
-    return $ e' <+> colon <+> t'
-  ppr (S.Var x) = return . text . name2String $ x
-  ppr (S.App f a) = (<+>) <$> ppr f <*> ppr a
+    return $ enclose' "" "" " : " ": " (fmap duplicate ([e', t']))
+  ppr (S.Var x) = return $ Pretty.pretty x
+  ppr (S.App f a) = do
+    df <- ppr f
+    da <- ppr a
+    return $ wrapf f df <+> wraparg a da
   ppr (S.TApp f a) = do
     f' <- ppr f
     a' <- ppr a
-    return $ parens (f' <> text "@" <> a')
+    return $ wrapf f f' <+> a'
   ppr (S.Lam bnd) =
     lunbind bnd $ \(x, b) -> do
       b' <- ppr b
-      return (parens $ text "λ" <> text (name2String x) <+> dot <+> b')
+      let short = "λ(" <> Pretty.pretty x <> ")"
+          d = [Pretty.group (Pretty.flatAlt short short), b']
+      return $ arrows (fmap duplicate d)
   ppr (S.LamA bnd) =
     lunbind bnd $ \((x, Embed t), b) -> do
       b' <- ppr b
       t' <- ppr t
-      return
-        (parens $ text "λ" <> text (name2String x) <> colon <> t' <+> dot <+> b')
+      let long =
+            "λ " <>
+            Pretty.align
+              ("( " <> Pretty.pretty x <> Pretty.hardline <> ": " <> t' <>
+               Pretty.hardline <>
+               ")")
+          short = "λ(" <> Pretty.pretty x <> " : " <> t' <> ")"
+          d = [Pretty.group (Pretty.flatAlt long short), b']
+      return $ arrows (fmap duplicate d)
+    where
+
   ppr (S.DLam bnd) =
     lunbind bnd $ \((x, Embed t), b) -> do
       b' <- ppr b
       t' <- ppr t
-      return
-        (parens $
-         text "Λ" <> parens (text (name2String x) <> text "*" <> t') <+>
-         dot <+> b')
-  ppr (S.LitV n) = return . text . show $ n
-  ppr (S.BoolV True) = return (text "true")
-  ppr (S.BoolV False) = return (text "false")
-  ppr (S.StrV b) = return . text $ show b
+      let long =
+            "Λ " <>
+            Pretty.align
+              ("( " <> Pretty.pretty x <> Pretty.hardline <> "* " <> t' <>
+               Pretty.hardline <>
+               ")")
+          short = "Λ(" <> Pretty.pretty x <> " * " <> t' <> ")"
+          d = [Pretty.group (Pretty.flatAlt long short), b']
+      return $ enclose' "" "" " . " ". " (fmap duplicate d)
+  ppr (S.LitV n) = return (Pretty.pretty n)
+  ppr (S.BoolV b) = return (Pretty.pretty b)
+  ppr (S.StrV b) = return (Pretty.dquotes (Pretty.pretty b))
   ppr (S.PrimOp op e1 e2) = do
     e1' <- ppr e1
-    e2' <- ppr e2
     op' <- ppr op
-    return $ parens (e1' <+> op' <+> e2')
+    e2' <- ppr e2
+    return $
+      enclose'
+        ""
+        ""
+        (" " <> op' <> " ")
+        (op' <> " ")
+        (fmap duplicate [e1', e2'])
   ppr (S.Merge e1 e2) = do
     e1' <- ppr e1
     e2' <- ppr e2
-    return $ parens (e1' <+> ",," <+> e2')
+    return $ enclose' "" "" " ,, " ",, " (fmap duplicate [e1', e2'])
   ppr (S.If p e1 e2) = do
-    p' <- ppr p
-    e1' <- ppr e1
-    e2' <- ppr e2
-    return $ text "if" <+> p' <+> text "then" <+> e1' <+> text "else" <+> e2'
+    p' <- (ppr p)
+    e1' <- (ppr e1)
+    e2' <- (ppr e2)
+    let long =
+          Pretty.align ("if    " <> p' <> Pretty.hardline <> "then  " <> e1')
+        short = "if " <> p' <> " then " <> e1'
+        d = [Pretty.group (Pretty.flatAlt long short), e2']
+    return $ enclose' "" "" " else " ("else  ") (fmap duplicate d)
   ppr (S.DRec l e) = do
     e' <- ppr e
-    return $ braces (text l <+> text "=" <+> e')
+    undefined
+    return $ braces [Pretty.pretty l <+> "=" <+> e']
   ppr (S.Acc e l) = do
     e' <- ppr e
-    return $ e' <> dot <> text l
+    return $ e' <> Pretty.dot <> Pretty.pretty l
   ppr (S.Remove e l t) = do
     e' <- ppr e
-    t' <- ppr t
-    return $ e' <+> char '\\' <+> braces (text l <+> colon <+> t')
-  ppr S.Top = return $ text "T"
-  ppr (S.Let b) =
-    lunbind b $ \((x, Embed t), (e, body)) -> do
-    e' <- ppr e
-    t' <- ppr t
-    b' <- ppr body
+    t' <- maybe (return Pretty.emptyDoc) ppr t
     return $
-      text "let" <+>
-      text (name2String x) <+>
-      colon <+> t' <+> text "=" <+> e' <+> text "in" <+> b'
-  ppr (S.AnonyTrait _) = return $ text "trait definition"
-  ppr (S.DRec' _) = return $ text "fancy records"
-
-instance Pretty T.UExpr where
-  ppr (T.UVar x) = return . text . name2String $ x
-  ppr (T.UApp f a) = do
-    f' <- ppr f
-    a' <- ppr a
-    return $ parens (f' <+> a')
-  ppr (T.ULam bnd) =
-    lunbind bnd $ \(x, b) -> do
-      b' <- ppr b
-      return (parens $ text "λ" <> text (name2String x) <+> dot <+> b')
-  ppr (T.ULitV n) = return . text . show $ n
-  ppr (T.UBoolV True) = return (text "true")
-  ppr (T.UBoolV False) = return (text "false")
-  ppr (T.UStrV b) = return . text $ show b
-  ppr (T.UPrimOp op e1 e2) = do
-    e1' <- ppr e1
-    e2' <- ppr e2
-    op' <- ppr op
-    return $ parens (e1' <+> op' <+> e2')
-  ppr (T.UPair e1 e2) = do
-    e1' <- ppr e1
-    e2' <- ppr e2
-    return $ parens (e1' <> ", " <+> e2')
-  ppr (T.UP1 e) = do
-    e' <- ppr e
-    return $ e' <> dot <> text (show 1)
-  ppr (T.UP2 e) = do
-    e' <- ppr e
-    return $ e' <> dot <> text (show 2)
-  ppr T.UUnit = return $ text "()"
-  ppr (T.UIf p e1 e2) = do
-    p' <- ppr p
-    e1' <- ppr e1
-    e2' <- ppr e2
-    return $ text "if" <+> p' <+> text "then" <+> e1' <+> text "else" <+> e2'
-  ppr (T.ULet b) =
-    lunbind b $ \(x, (e, body)) -> do
-      e' <- ppr e
+      e' <+> Pretty.pretty '\\' <+> Pretty.braces (Pretty.pretty l <+> t')
+  ppr S.Top = return $ "()"
+  ppr (S.Letrec b) =
+    lunbind b $ \((x, Embed t), (e, body)) -> do
       b' <- ppr body
-      return $ text "let" <+> text (name2String x) <+> text "=" <+> e' <+> text "in" <+> b'
-  ppr (T.UToString e) = do
-    e' <- ppr e
-    return $ e' <> dot <> text "toString"
-  ppr (T.USqrt e) = do
-    e' <- ppr e
-    return $ e' <> dot <> text "sqrt"
+      e' <- ppr e
+      (long, short) <-
+        maybe
+          (let long =
+                 "let " <>
+                 Pretty.align
+                   (Pretty.pretty x <> " =" <> Pretty.hardline <> "  " <> e')
+               short = "let " <> Pretty.pretty x <> " = " <> e'
+           in return (long, short))
+          (\tt -> do
+             t' <- ppr tt
+             let long =
+                   "letrec " <>
+                   Pretty.align
+                     (Pretty.pretty x <> Pretty.hardline <> ": " <> t' <>
+                      Pretty.hardline <>
+                      "= " <>
+                      e')
+                 short =
+                   "letrec " <> Pretty.pretty x <> " : " <> t' <> " = " <> e'
+             return (long, short))
+          t
+      let d = [Pretty.group (Pretty.flatAlt long short), b']
+      return $ enclose' "" "" " in " ("in  ") (fmap duplicate d)
+  ppr S.Bot = return $ "undefined"
+  ppr (S.AnonyTrait _) = return $ "trait definition"
+  ppr (S.DRec' _) = return $ "fancy records"
+  ppr (S.Pos _ e) = ppr e
 
 
-pprint :: Pretty a => a -> Doc
+pprint :: FPretty a => a -> FDoc
 pprint = runLFreshM . ppr
 
-warn :: String -> Doc
-warn s = dullred . bold $ text "***" <+> text s <> colon
 
-info :: String -> Doc
-info = dullyellow . bold . brackets . text
+
+-- | Pretty-print record types and literals
+braces :: [Doc ann] -> Doc ann
+braces   [] = "{}"
+braces docs = enclose "{ " "{ " ", " ", " " }" "}" (fmap duplicate docs)
+
+
+-- | Pretty-print anonymous functions and function types
+arrows :: [(Doc ann, Doc ann)] -> Doc ann
+arrows = enclose' "" "" " → " "→ "
+
+{-| Format an expression that holds a variable number of elements, such as a
+    list, record, or union
+-}
+enclose
+    :: Doc ann
+    -- ^ Beginning document for compact representation
+    -> Doc ann
+    -- ^ Beginning document for multi-line representation
+    -> Doc ann
+    -- ^ Separator for compact representation
+    -> Doc ann
+    -- ^ Separator for multi-line representation
+    -> Doc ann
+    -- ^ Ending document for compact representation
+    -> Doc ann
+    -- ^ Ending document for multi-line representation
+    -> [(Doc ann, Doc ann)]
+    -- ^ Elements to format, each of which is a pair: @(compact, multi-line)@
+    -> Doc ann
+enclose beginShort _         _        _       endShort _       []   =
+    beginShort <> endShort
+  where
+enclose beginShort beginLong sepShort sepLong endShort endLong docs =
+    Pretty.group
+        (Pretty.flatAlt
+            (Pretty.align
+                (mconcat (zipWith combineLong (beginLong : repeat sepLong) docsLong) <> endLong)
+            )
+            (mconcat (zipWith combineShort (beginShort : repeat sepShort) docsShort) <> endShort)
+        )
+  where
+    docsShort = fmap fst docs
+
+    docsLong = fmap snd docs
+
+    combineLong x y = x <> y <> Pretty.hardline
+
+    combineShort x y = x <> y
+
+
+
+{-| Format an expression that holds a variable number of elements without a
+    trailing document such as nested `let`, nested lambdas, or nested `forall`s
+-}
+enclose'
+    :: Doc ann
+    -- ^ Beginning document for compact representation
+    -> Doc ann
+    -- ^ Beginning document for multi-line representation
+    -> Doc ann
+    -- ^ Separator for compact representation
+    -> Doc ann
+    -- ^ Separator for multi-line representation
+    -> [(Doc ann, Doc ann)]
+    -- ^ Elements to format, each of which is a pair: @(compact, multi-line)@
+    -> Doc ann
+enclose' beginShort beginLong sepShort sepLong docs =
+  Pretty.group (Pretty.flatAlt long short)
+  where
+    longLines = zipWith (<>) (beginLong : repeat sepLong) docsLong
+    long =
+      Pretty.align (mconcat (Data.List.intersperse Pretty.hardline longLines))
+    short = mconcat (zipWith (<>) (beginShort : repeat sepShort) docsShort)
+    docsShort = fmap fst docs
+    docsLong = fmap snd docs
+
+
+{-| Internal utility for pretty-printing, used when generating element lists
+    to supply to `enclose` or `enclose'`.  This utility indicates that the
+    compact represent is the same as the multi-line representation for each
+    element
+-}
+duplicate :: a -> (a, a)
+duplicate x = (x, x)

@@ -15,8 +15,11 @@ type Lang = {lit : Int -> IPrint} & {add : IPrint -> IPrint -> IPrint};
 
 -- BEGIN_LANG_IMPL
 implLang : Lang = {
-  lit = \value -> { print = value.toString },
-  add = \left right -> { print = left.print ++ "+" ++ right.print }};
+  lit (value : Int) = { print = value.toString },
+  add (left : IPrint) (right : IPrint) = {
+    print = left.print ++ "+" ++ right.print
+  }
+};
 -- END_LANG_IMPL
 
 
@@ -28,45 +31,44 @@ type IEval = { eval : Int };
 -- BEGIN_EVAL_PRINT_INTERFACE
 type LangEval = {
   lit : Int -> IPrint & IEval,
-  add : IPrint & IEval -> IPrint & IEval -> IPrint & IEval };
+  add : IPrint & IEval -> IPrint & IEval -> IPrint & IEval
+};
 -- END_EVAL_PRINT_INTERFACE
 
 -- BEGIN_EVAL_INTERFACE2
 type EvalExt = { lit : Int -> IEval, add : IEval -> IEval -> IEval };
 -- END_EVAL_INTERFACE2
 
-{-
 -- BEGIN_EVAL_PRINT_IMPL
 implEval = {
-  lit = \value -> { eval = value },
-  add = \left right -> { eval = left.eval + right.eval }};
+  lit (value : Int) = { eval = value },
+  add (left : IEval) (right : IEval) = {
+    eval = left.eval + right.eval
+  }
+};
 implLangEval : LangEval = implLang ,, implEval;
 -- END_EVAL_PRINT_IMPL
--}
-
-implEval : EvalExt = {
-  lit = \value -> { eval = value },
-  add = \left right -> { eval = left.eval + right.eval }};
-implLangEval : LangEval = implLang ,, implEval;
-
 
 -- BEGIN_LANG_NEG
 type NegPrint = { neg : IPrint -> IPrint };
 type LangNeg = Lang & NegPrint;
 
-implNegPrint : NegPrint = {neg = \exp -> { print = "-" ++ exp.print }};
+implNegPrint : NegPrint = {
+  neg (exp : IPrint) = { print = "-" ++ exp.print }
+};
 implLangNeg : LangNeg = implLang ,, implNegPrint;
 -- END_LANG_NEG
 
 
 -- BEGIN_LANG_FINAL
 type NegEval = { neg : IEval -> IEval};
-implNegEval : NegEval = { neg = \exp -> { eval = 0 - exp.eval }};
+implNegEval : NegEval = {
+  neg (exp : IEval) = { eval = 0 - exp.eval }
+};
 
 type NegEvalExt = { neg : IPrint & IEval -> IPrint & IEval };
 type LangNegEval = LangEval & NegEvalExt;
-implLangNegEval : LangNegEval =
-  implLangEval ,, implNegPrint ,, implNegEval;
+implLangNegEval : LangNegEval = implLangEval ,, implNegPrint ,, implNegEval;
 -- END_LANG_FINAL
 
 

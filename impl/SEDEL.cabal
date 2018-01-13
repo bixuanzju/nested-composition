@@ -1,6 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.17.1.
+-- This file has been generated from package.yaml by hpack version 0.20.0.
 --
 -- see: https://github.com/sol/hpack
+--
+-- hash: 442a58e1f408b17896168382c16ee22e003595e3c07fd42191023f65118f83e6
 
 name:                SEDEL
 version:             0.1.0.0
@@ -25,52 +27,56 @@ library
       SEDEL.PrettyPrint
       SEDEL.Source.Syntax
       SEDEL.Source.Subtyping
-      SEDEL.Source.Typing
+      SEDEL.Source.TypeCheck
       SEDEL.Source.Desugar
-      SEDEL.Source.SrcLoc
       SEDEL.Target.Syntax
-      SEDEL.Target.Dynamics
-      SEDEL.Target.CBN
+      SEDEL.Target.Eval
       SEDEL.Util
       SEDEL
   other-modules:
       Paths_SEDEL
   build-depends:
       ansi-wl-pprint
-    , base >=4.7 && <5
-    , mtl
-    , repline
     , array
+    , base >=4.7 && <5
     , containers
-    , protolude
-    , text
-    , filepath
     , directory
-    , megaparsec
+    , filepath
+    , haskeline
+    , megaparsec >=6.0
+    , mtl
+    , prettyprinter
+    , protolude >=0.2
+    , repline
     , scientific
+    , text
     , unbound-generics
   default-language: Haskell2010
   ghc-options: -fwarn-tabs -fwarn-unused-imports -fwarn-missing-signatures -fwarn-name-shadowing -fwarn-incomplete-patterns
 
-executable SEDEL-exe
+executable sedel
   main-is: Main.hs
   hs-source-dirs:
       app
   ghc-options: -fwarn-tabs -fwarn-unused-imports -fwarn-missing-signatures -fwarn-name-shadowing -fwarn-incomplete-patterns -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-wl-pprint
-    , base >=4.7 && <5
-    , mtl
-    , repline
+      SEDEL
+    , ansi-wl-pprint
     , array
+    , base >=4.7 && <5
     , containers
-    , protolude
-    , text
-    , filepath
     , directory
-    , megaparsec
+    , filepath
+    , haskeline
+    , megaparsec >=6.0
+    , mtl
+    , prettyprinter
+    , protolude >=0.2
+    , repline
     , scientific
-    , SEDEL
+    , text
+  other-modules:
+      Paths_SEDEL
   default-language: Haskell2010
 
 test-suite SEDEL-test
@@ -80,19 +86,23 @@ test-suite SEDEL-test
       test
   ghc-options: -fwarn-tabs -fwarn-unused-imports -fwarn-missing-signatures -fwarn-name-shadowing -fwarn-incomplete-patterns -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      ansi-wl-pprint
-    , base >=4.7 && <5
-    , mtl
-    , repline
+      SEDEL
+    , ansi-wl-pprint
     , array
+    , base >=4.7 && <5
     , containers
-    , protolude
-    , text
-    , filepath
     , directory
-    , megaparsec
+    , filepath
+    , haskeline
+    , megaparsec >=6.0
+    , mtl
+    , prettyprinter
+    , protolude >=0.2
+    , repline
     , scientific
     , tasty >=0.11.1
     , tasty-hspec >=1.1.3.1
-    , SEDEL
+    , text
+  other-modules:
+      Paths_SEDEL
   default-language: Haskell2010

@@ -5,12 +5,12 @@
 module SEDEL.Source.Desugar
   ( desugar
   , desugarExpr
-  , resolveDecls
+  , desugarTmBind
   , normalizeTmDecl
   , expandType
   ) where
 
-import Protolude hiding (Type)
+import Protolude
 import Unbound.Generics.LocallyNameless
 
 import SEDEL.Environment
@@ -30,7 +30,17 @@ desugarTmBind b = b {bindRhs = desugarExpr (bindRhs b)}
 desugarExpr :: Expr -> Expr
 desugarExpr = runFreshM . go
   where
+
     go :: Fresh m => Expr -> m Expr
+
+    -- Interesting cases
+    go (AnonyTrait t) = return $ desugarTrait t
+
+    go (DRec' b) =
+      let (l, e) = normalizeTmDecl (desugarTmBind b)
+      in return $ DRec l e
+
+    -- Routine
     go (Anno e t) = do
       e' <- go e
       return $ Anno e' t
@@ -42,6 +52,13 @@ desugarExpr = runFreshM . go
       (n, body) <- unbind t
       body' <- go body
       return $ Lam (bind n body')
+
+    go (Letrec t) = do
+      ((n, pt), (e, body)) <- unbind t
+      bind' <- go e
+      body' <- go body
+      return $ Letrec (bind (n, pt) (bind', body'))
+
     go (DLam b) = do
       ((n, t), body) <- unbind b
       body' <- go body
@@ -75,81 +92,155 @@ desugarExpr = runFreshM . go
       ((n, t), body) <- unbind b
       body' <- go body
       return $ LamA (bind (n, t) body')
-    go (AnonyTrait t) = return $ desugarTrait t
-    go (DRec' b) =
-      let (l, e) = normalizeTmDecl (desugarTmBind b)
-      in return $ DRec l e
+    go (Pos p e) = do
+      e' <- go e
+      return (Pos p e')
     go e = return e
 
 
 
--- Desugar trait
---
--- trait (x : A, y : B) inherits b & c {self : C => ...}
--- \(x : A) (y : B) (self : C) . b(self) ,, c(self) ,, {...}
+{- | Desugar trait
+
+
+trait [self : C] inherits b & c {...}
+
+~>
+
+\ (self : C) . let super = b(self) ,, c(self) in super \ {...} ,, {...}
+
+
+If there are any overridden methods, remove them from super
+
+
+Limitation:
+
+Don't use the same name for both overridden and non-overridden methods, even if
+they have different types, otherwise the behaviour is unpredictable.
+
+
+-}
 desugarTrait :: Trait -> Expr
-desugarTrait trait =
-  normalize
-    typarams
-    (map (second Just) params ++ [(s2n self, Just st)])
-    -- if no supers, return body otherwise merge them to body
-    (maybe body (flip Merge body) (foldl1May Merge supers))
-    (retType trait)
+desugarTrait trait = expr
   where
-    typarams = traitTyParams trait
-    params = traitParams trait
-    tb = map desugarTmBind (traitBody trait)
+    (expr, _) =
+      normalize
+        []
+        [ ( s2n self
+          , Just st)
+        ]
+        -- when no inherits, there is no super in scope
+        (maybe
+           body
+           (\arg -> elet "super" arg (Merge superExpr body))
+           (foldl1May Merge inherits))
+        ret
     (self, st) = selfType trait
-    supers = traitSuper trait
-    body = mkRecds (map normalizeTmDecl tb)
+    inherits =
+      map
+        (\t ->
+           case desugarExpr t of
+             Pos p (Remove e l t') -> Pos p (Remove (App e (evar self)) l t')
+             -- hack for trait excluding
+             t' -> App t' (evar self))
+        (traitSuper trait)
+    body = mkRecds (map (normalizeTmDecl . desugarTmBind) (traitBody trait))
+    overrides = map bindName (filter isOverride (traitBody trait))
+    -- remove overridden methods from super
+    superExpr = foldr (\l tt -> Remove tt l Nothing) (evar "super") overrides
+    ret = retType trait
 
 
 
 -- After parsing, earlier declarations appear first in the list
 -- Substitute away all type declarations
-resolveDecls :: [SDecl] -> [TmBind]
-resolveDecls decls = map (substs substPairs) [decl | (DefDecl decl) <- decls]
-  where
-    tydecls =
-      foldl'
-        (\ds t -> substs (toSubst ds) t : ds)
-        []
-        [decl | decl@TypeDecl {} <- decls]
-    substPairs = toSubst tydecls
-    toSubst ds = [(s2n n, t) | TypeDecl (TypeBind n _ t) <- ds]
+-- resolveDecls :: [SDecl] -> [TmBind]
+-- resolveDecls decls = map (substs substPairs) [decl | (DefDecl decl) <- decls]
+--   where
+--     tydecls =
+--       foldl'
+--         (\ds t -> substs (toSubst ds) t : ds)
+--         []
+--         [decl | decl@TypeDecl {} <- decls]
+--     substPairs = toSubst tydecls
+--     toSubst ds = [(s2n n, t) | TypeDecl (TypeBind n _ t) <- ds]
 
-{-
+{- |
 
-Translate
 
-def n [(A, T1), (B, T2)] [(x, A), (y, B)] C e
+(1): Translate
+
+f [(A, T1), (B, T2)] [(x, A), (y, B)] = e
 
 to
 
-(n, /\ A*T1. B*T2. \x : A .\y : B . (e : C), [T1, T2])
+(f, /\ A*T1. B*T2. \x : A .\y : B . e)
+
+
+(2): Translate
+
+f [(A, T1), (B, T2)] [(x, A), (y, B)] C = e
+
+to
+
+(f, letrec f : forall (A * T1) (B * T2) . A -> B -> C = /\ A*T1. B*T2. \x y . e in f)
+
 
 -}
 
 
-normalizeTmDecl :: TmBind -> (BindName, Expr)
+normalizeTmDecl :: TmBind -> (RawName, Expr)
 normalizeTmDecl decl =
   ( bindName decl
-  , normalize
-      (bindTyParams decl)
-      (bindParams decl)
-      (bindRhs decl)
-      (bindRhsTyAscription decl))
-
-normalize :: [(TyName, Type)] -> [(TmName, Maybe Type)] -> Expr -> Maybe Type -> Expr
-normalize tyParams params e ret = body
+  , maybe ex (\t -> eletr (bindName decl) t ex (evar (bindName decl))) typ)
   where
+    (ex, typ) =
+      normalize
+        (bindTyParams decl)
+        (bindParams decl)
+        (bindRhs decl)
+        (bindRhsTyAscription decl)
+
+{- |
+
+Note: Make sure everything is desugarred before normalizing
+
+Normalize
+
+[(A, T1), (B, T2)] [(x, A), (y, B)] C e
+
+to
+
+\/ A*T1. B*T2. A -> B -> C
+
+and
+
+/\ A*T1. B*T2. \x.\y.e
+
+-}
+normalize :: [(TyName, Type)] -> [(TmName, Maybe Type)] -> Expr -> Maybe Type -> (Expr, Maybe Type)
+normalize tyParams params e ret = (body, tbody)
+  where
+    tbody =
+      maybe
+        Nothing
+        (\arr' ->
+           Just
+             (foldr (\(n, s) tm -> DForall (bind (n, Embed s) tm)) arr' tyParams))
+        arr
+    arr =
+      maybe
+        Nothing
+        (\t ->
+           foldrM
+             (\(_, x) y -> maybe Nothing (\x' -> Just $ Arr x' y) x)
+             t
+             params)
+        ret
     body = foldr (\(n, s) tm -> DLam (bind (n, Embed s) tm)) fun tyParams
     fun =
       foldr
         (\(n, t) tm ->
-           case t of
-             Just t' -> LamA (bind (n, Embed t') tm)
-             Nothing -> Lam (bind n tm))
+           maybe (Lam (bind n tm)) (\t' -> LamA (bind (n, Embed t') tm)) t)
         (maybe e (Anno e) ret)
         params
 

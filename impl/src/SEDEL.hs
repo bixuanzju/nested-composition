@@ -1,60 +1,90 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, NoImplicitPrelude #-}
 
 
 module SEDEL
   ( evalFile
+  , readAndEval
+  , driver
+  , render
   ) where
 
 import           Control.Exception (SomeException, try)
-import           Data.Text (Text)
 import qualified Data.Text as T
-import           Text.PrettyPrint.ANSI.Leijen hiding (Pretty)
+import           Data.Text.Prettyprint.Doc ((<+>))
+import qualified Data.Text.Prettyprint.Doc as Pretty
+import           Protolude hiding (evaluate)
 
 import           SEDEL.Environment
 import           SEDEL.Parser.Parser (parseModule)
 import           SEDEL.PrettyPrint
-import           SEDEL.Source.Typing
-import qualified SEDEL.Target.CBN as C
+import           SEDEL.Source.Syntax
+import           SEDEL.Source.TypeCheck
+import           SEDEL.Target.Eval
 
-type Result = Either Doc String
-
-ret :: Doc -> Result
-ret = Left
+type Result = Either FDoc (Type, Text)
 
 parseExpectedOutput :: Text -> Maybe Text
 parseExpectedOutput source =
   let firstLine = T.takeWhile (/= '\n') source
   in fmap T.strip (T.stripPrefix "-->" (T.strip firstLine))
 
-readTry :: IO String -> IO (Either SomeException String)
+readTry :: IO Text -> IO (Either SomeException Text)
 readTry = try
 
-eval :: String -> Result
-eval inp =
-  case parseModule inp of
-    Left err -> ret $ warn "Syntax error" <+> text err
-    Right abt ->
-      let res = runTcMonad emptyCtx (tcModule abt)
-      in case res of
-           Left err -> ret err
-           Right (_, tar, tEnv) -> return . show . C.evaluate tEnv $ tar
+driver :: Ctx -> Module -> IO Result
+driver ctx abt = do
+  res <- runTcMonad ctx (tcModule abt)
+  case res of
+    Right (typ, tar) -> do
+      r <- evaluate tar
+      case r of
+        Right eres -> return $ Right (typ, show eres)
+        Left er -> return $ Left (Pretty.pretty er)
+    Left er -> return (Left (pprint er))
 
-evalFile :: FilePath -> IO ((Doc, Maybe Doc), Bool)
+
+render :: (Type, Text) -> FDoc
+render (ty, res) =
+  "Typing result" <> Pretty.line <> Pretty.colon <+>
+  pprint ty <> Pretty.line <> Pretty.line <> "Evaluation result" <> Pretty.line <> "=>" <+>
+  Pretty.pretty res
+
+
+readAndEval :: FilePath -> IO FDoc
+readAndEval path = do
+  msg <- readTry $ readFile path
+  case msg of
+    Left err -> return $ "Load file error" <+> Pretty.pretty (T.pack (show err))
+    Right contents ->
+      case parseModule (toS contents) of
+        Left err -> return $ "Syntax error" <+> Pretty.pretty err
+        Right abt -> do
+          res <- driver emptyCtx abt
+          case res of
+            Left err -> return err
+            Right r -> return (render r)
+
+
+-- For test purposes
+evalFile :: FilePath -> IO ((FDoc, Maybe FDoc), Bool)
 evalFile path = do
   msg <- readTry $ readFile path
   let failed d = return ((d, Nothing), False)
       failWith d d' = return ((d, Just d'), False)
       succed d = return ((d, Nothing), True)
   case msg of
-    Left err -> failed $ warn "Load file error" <+> text (show err)
+    Left err -> failed $ "Load file error" <+> Pretty.pretty (T.pack (show err))
     Right contents ->
-      let value = eval contents
-      in case value of
-           Left err -> failed err
-           Right tm ->
-             case parseExpectedOutput (T.pack contents) of
-               Nothing -> failed $ warn "No expectation" <+> text tm
-               Just (T.unpack -> expinp) ->
-                 if tm == expinp
-                   then succed (text tm)
-                   else failWith (text tm) (text expinp)
+      case parseModule (toS contents) of
+        Left err -> failed (Pretty.pretty err)
+        Right abt -> do
+          value <- driver emptyCtx abt
+          case value of
+            Left err -> failed err
+            Right (_, tm) ->
+              case parseExpectedOutput contents of
+                Nothing -> failed $ "No expectation" <+> Pretty.pretty tm
+                Just expinp ->
+                  if tm == expinp
+                    then succed (Pretty.pretty tm)
+                    else failWith (Pretty.pretty tm) (Pretty.pretty expinp)

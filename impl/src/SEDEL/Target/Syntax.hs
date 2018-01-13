@@ -29,6 +29,7 @@ data UExpr = UVar UName
            | UIf UExpr UExpr UExpr
            | UToString UExpr
            | USqrt UExpr
+           | Bot
            deriving (Show, Generic)
 
 instance Alpha UExpr
@@ -53,3 +54,6 @@ elam b e = ULam (ebind b e)
 
 eapp :: UExpr -> UExpr -> UExpr
 eapp = UApp
+
+elet :: UName -> UExpr -> UExpr -> UExpr
+elet n e b = ULet (bind n (e, b))

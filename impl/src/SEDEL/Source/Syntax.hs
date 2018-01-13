@@ -1,11 +1,17 @@
-{-# LANGUAGE DeriveGeneric, MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveGeneric, MultiParamTypeClasses, TemplateHaskell, FlexibleInstances #-}
 
 module SEDEL.Source.Syntax where
 
-import SEDEL.Common
+import           SEDEL.Common
 
-import Unbound.Generics.LocallyNameless
-import GHC.Generics (Generic)
+import           Data.Text.Prettyprint.Doc (Pretty)
+import qualified Data.Text.Prettyprint.Doc as Pretty
+import           GHC.Generics (Generic)
+import           Unbound.Generics.LocallyNameless
+import Unbound.Generics.LocallyNameless.TH
+import           Text.Megaparsec
+import Data.Maybe (fromMaybe)
+
 
 -- | Modules
 data Module = Module
@@ -19,36 +25,35 @@ data SDecl
   | TypeDecl TypeBind
   deriving (Show, Generic)
 
-type BindName = String
+type RawName = String
 
 data Trait = TraitDef
-  { selfType      :: (BindName, Type)
-    -- ^ Self type
+  { selfType      :: (RawName, Type)
   , traitSuper    :: [Expr]
   , retType       :: Maybe Type
-  , traitTyParams :: [(TyName, Type)]
-  , traitParams   :: [(TmName, Type)]
   , traitBody     :: [TmBind]
   } deriving (Show, Generic)
 
 
 -- f A1,...,An (x1: t1) ... (xn: tn): t = e
+-- If t is provided, then e can mention f
 data TmBind = TmBind
-  { bindName            :: BindName                  -- f
+  { bindName            :: RawName                   -- f
   , bindTyParams        :: [(TyName, Type)]          -- A1, ..., An
   , bindParams          :: [(TmName, Maybe Type)]    -- x1: t1, ..., xn: tn
   , bindRhs             :: Expr                      -- e
   , bindRhsTyAscription :: Maybe Type                -- t
+  , isOverride          :: Bool
   } deriving (Show, Generic)
 
 -- type T[A1, ..., An] = t
 data TypeBind = TypeBind
-  { typeBindName   :: BindName           -- T
+  { typeBindName   :: RawName            -- T
   , typeBindParams :: [(TyName, Kind)]   -- A1, ..., An
   , typeBindRhs    :: Type               -- t
   } deriving (Show, Generic)
 
--- Unbound library
+
 type TmName = Name Expr
 type TyName = Name Type
 
@@ -57,13 +62,13 @@ data Expr = Anno Expr Type
           | Var TmName
           | App Expr Expr
           | Lam (Bind TmName Expr)
-          | Let (Bind (TmName, Embed Type) (Expr, Expr))
+          | Letrec (Bind (TmName, Embed (Maybe Type)) (Expr, Expr))
             -- ^ let expression, possibly recursive
           | DLam (Bind (TyName, Embed Type) Expr)
           | TApp Expr Type
           | DRec Label Expr
           | Acc Expr Label
-          | Remove Expr Label Type
+          | Remove Expr Label (Maybe Type)
           | Merge Expr Expr
           | LitV Double
           | BoolV Bool
@@ -71,12 +76,15 @@ data Expr = Anno Expr Type
           | PrimOp Operation Expr Expr
           | If Expr Expr Expr
           | Top
-          | AnonyTrait Trait
-          -- ^ Disappear after desugaring
-          | DRec' TmBind
-          -- ^ Disappear after desugaring
+          -- practical matters for surface language
+          | Pos SourcePos Expr
+          -- ^ marked source position, for error messages
           | LamA (Bind (TmName, Embed Type) Expr)
           -- ^ Not exposed to users, for internal use
+          | Bot
+          -- The following should disappear after desugaring
+          | AnonyTrait Trait
+          | DRec' TmBind
   deriving (Show, Generic)
 
 type Label = String
@@ -100,7 +108,13 @@ data Type = NumT
 data Kind = Star | KArrow Kind Kind deriving (Eq, Show, Generic)
 
 
+instance Pretty (Name a) where
+    pretty v = Pretty.pretty (name2String v)
+
+
 -- Unbound library instances
+
+$(makeClosedAlpha ''SourcePos)
 
 instance Alpha Type
 instance Alpha Expr
@@ -109,6 +123,11 @@ instance Alpha SDecl
 instance Alpha TmBind
 instance Alpha TypeBind
 instance Alpha Kind
+
+
+instance Subst b SourcePos where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst Expr Type
 instance Subst Expr Kind
@@ -136,6 +155,22 @@ instance Subst Type TmBind
 instance Subst Type TypeBind
 instance Subst Type Kind
 
+
 instance Subst Type Type where
   isvar (TVar v) = Just (SubstName v)
   isvar _ = Nothing
+
+
+-- | Partial inverse of Pos
+unPosExpr :: Expr -> Maybe SourcePos
+unPosExpr (Pos p _) = Just p
+unPosExpr _         = Nothing
+
+-- | Tries to find a Pos anywhere inside a term
+unPosDeep :: Expr -> Maybe SourcePos
+unPosDeep = unPosExpr
+
+-- | Tries to find a Pos inside a term, otherwise just gives up.
+unPosFlaky :: Expr -> SourcePos
+unPosFlaky t =
+  fromMaybe (SourcePos "unknown location" (mkPos 0) (mkPos 0)) (unPosDeep t)

@@ -38,12 +38,12 @@ Evaluation result
 
 ## Quick Reference
 
-A program consists of list of declarations, ending with a single expression.
+A program consists of list of declarations (separated by `;`), ended with a `main` declaration.
 Like Haskell, a line comment starts with `--` and a comment block is wrapped by
 `{-` and `-}`. 
 
-* Primitive type: `Int`, `Bool`, `String`
-* Top type/value: `() : T`
+* Primitive type: `Int`, `Bool`, `Double, ``String`
+* Top type/value: `() : Top`
 * Type annotation: `2 : Int`
 * Merge: `true ,, 3`
 * Intersection type: `Bool & (Int -> Int)`

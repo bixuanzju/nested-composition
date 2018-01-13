@@ -5,15 +5,15 @@ import Test.Tasty.Hspec
 import System.FilePath
 import Data.List (isSuffixOf)
 import System.Directory
-import Text.PrettyPrint.ANSI.Leijen (Doc)
 import SEDEL
+import SEDEL.PrettyPrint
 
-data TestResult = Res Doc Bool
+data TestResult = Res FDoc Bool
 
-instance Eq TestResult where
+instance Eq (TestResult) where
   (Res _ b) == (Res _ b') = b && b'
 
-instance Show TestResult where
+instance Show (TestResult) where
   show (Res i _) = show i
 
 testPath :: FilePath

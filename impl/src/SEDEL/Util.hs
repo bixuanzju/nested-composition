@@ -3,7 +3,6 @@ module SEDEL.Util where
 import SEDEL.Source.Syntax
 
 import Data.List (foldl', foldl1')
-import Data.Maybe (fromMaybe)
 import Unbound.Generics.LocallyNameless
 import Unbound.Generics.LocallyNameless.Name
 
@@ -11,14 +10,6 @@ import Unbound.Generics.LocallyNameless.Name
 translate :: Name a -> Name b
 translate (Fn x y) = Fn x y
 translate (Bn x y) = Bn x y
-
--- | 'unzip' transforms a list of pairs into a list of first components
--- and a list of second components.
-unzip    :: [(a,b)] -> ([a],[b])
-{-# INLINE unzip #-}
-unzip    =  foldr (\(a,b) ~(as,bs) -> (a:as,b:bs)) ([],[])
-
-
 
 -- Utility for parsing
 
@@ -33,6 +24,10 @@ ebind n = bind (s2n n)
 
 elam :: String -> Expr -> Expr
 elam b e = Lam (ebind b e)
+
+
+elam2 :: (String, Type) -> Expr -> Expr
+elam2 (x, t) e = LamA (bind (s2n x, embed t) e)
 
 dlam :: (String, Type) -> Expr -> Expr
 dlam (s, t) b = DLam (bind (s2n s, embed t) b)
@@ -63,36 +58,25 @@ mkArr = foldr Arr
 mkForall :: Type -> [(TyName, Embed Type)] -> Type
 mkForall = foldr (\b t -> DForall (bind b t))
 
-elet :: String -> Type -> Expr -> Expr -> Expr
-elet s t e b = Let (bind (s2n s, embed t) (e, b))
+eletr :: String -> Type -> Expr -> Expr -> Expr
+eletr s t e b = Letrec (bind (s2n s, embed (Just t)) (e, b))
+
+
+elet :: String -> Expr -> Expr -> Expr
+elet s e b = Letrec (bind (s2n s, embed Nothing) (e, b))
 
 transNew :: Type -> [Expr] -> Expr
-transNew t es = elet "self" t (foldl1' Merge es) (evar "self")
-
-
-{-
-
-Translate
-
-[(A, T1), (B, T2)] [(x, A), (y, B)] C e
-
-to
-
-\/ A*T1. B*T2. A -> B -> C
-
-and
-
-/\ A*T1. B*T2. \x.\y.e
-
--}
-
-teleToTmBind ::
-     [(String, Type)] -> [(String, Maybe Type)] -> Type -> Expr -> (Type, Expr)
--- Ideally for defrec, users should annotate all arguments, but here we assume T
--- if not annotated
-teleToTmBind tys tms res e =
-  let arr = foldr (\(_, t) tt -> Arr (fromMaybe TopT t) tt) res tms
-      tbind = foldr tforall arr tys
-      fun = foldr (\(n, _) tm -> elam n tm) e tms
-      bfun = foldr dlam fun tys
-  in (tbind, bfun)
+transNew ty es =
+  eletr
+    "self"
+    ty
+    (foldl1'
+       Merge
+       (map
+          (\tm ->
+             case tm of
+               Pos p (Remove e l t') -> Pos p (Remove (App e (evar "self")) l t')
+               -- hack for trait excluding
+               _ -> App tm (evar "self"))
+          es))
+    (evar "self")
