@@ -23,17 +23,17 @@ stack exec SEDEL-exe
 ## REPL
 
 The REPL prompt is `>`:
-- type `:q` to quit or input any expression in the source language to check its
-result
+- type `:q` to quit
 - type `:load` to load a file
+- type `:?` for usage
 
 ```
-> 2
+> :load examples/overview.sl 
 Typing result
-: Int
+: String
 
 Evaluation result
-=> 2.0
+=> "-2.0+3.0 = 1.0"
 ```
 
 ## Quick Reference
