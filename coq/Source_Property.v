@@ -32,7 +32,7 @@ Qed.
 
 
 
-Lemma subtyping_well_type_coercion : forall A1 A2 c,
+Lemma co_sound : forall A1 A2 c,
     A1 ≺: A2 ⇝ c ->
     c |= | A1 | ~> | A2 |.
 Proof.
@@ -40,14 +40,14 @@ Proof.
   induction Sub; simpls*.
 Qed.
 
-Lemma elaboration_well_type_term : forall Γ E A d t,
+Lemma elab_sound : forall Γ E A d t,
     has_type Γ E d A t ->
     ∥ Γ ∥ |= t ~: | A |.
 Proof.
   introv Typ.
   induction Typ; simpls*.
 
-  lets* : subtyping_well_type_coercion H.
+  lets* : co_sound H.
 Qed.
 
 

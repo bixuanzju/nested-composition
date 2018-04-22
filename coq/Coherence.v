@@ -23,7 +23,7 @@ Definition ctx_equiv Γ E1 E2 A := forall e1 e2 dir dir' C c,
     kleene_equiv (appctx c e1) (appctx c e2).
 
 
-Theorem coherence_log : forall Γ E A d t1 t2,
+Lemma coherence_log : forall Γ E A d t1 t2,
     has_type Γ E d A t1 ->
     has_type Γ E d A t2 ->
     rel_e_open (∥ Γ ∥) (∥ Γ ∥) t1 t2 (| A |) (| A |).
@@ -50,10 +50,10 @@ Proof.
   - (* t_merge *)
     inverts Ty2 as Ty1' Ty'2 ?.
     unfolds.
-    forwards * H0 : elaboration_well_type_term Ty1_1.
-    forwards * H1 : elaboration_well_type_term Ty1_2.
-    forwards * H2 : elaboration_well_type_term Ty1'.
-    forwards * H3 : elaboration_well_type_term Ty'2.
+    forwards * H0 : elab_sound Ty1_1.
+    forwards * H1 : elab_sound Ty1_2.
+    forwards * H2 : elab_sound Ty1'.
+    forwards * H3 : elab_sound Ty'2.
     splits*.
     intros g1 g2 GG'.
     repeat rewrite bind_pair.
@@ -113,14 +113,14 @@ Proof.
     inverts Ty1.
     forwards * : IHTy1.
     forwards * : inference_unique Ty1 H0. substs.
-    forwards * : subtyping_well_type_coercion H.
-    forwards * : subtyping_well_type_coercion H1.
-    sapply* coercion_compatibility1.
-    sapply* coercion_compatibility2.
+    forwards * : co_sound H.
+    forwards * : co_sound H1.
+    sapply* coercion_compat1.
+    sapply* coercion_compat2.
 Qed.
 
 
-Theorem congruence : forall Γ Γ' E1 E2 A A' e1 e2 dir dir' C c,
+Lemma congruence : forall Γ Γ' E1 E2 A A' e1 e2 dir dir' C c,
     CTyp C Γ dir A Γ' dir' A' c ->
     has_type Γ E1 dir A e1 ->
     has_type Γ E2 dir A e2 ->

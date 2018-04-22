@@ -36,12 +36,12 @@ Proof with eauto.
     substs.
     lets Imp1 : coherence_log H1 H4.
     lets Imp2 : coherence_log H6 H6.
-    lets Co : subtyping_well_type_coercion H0.
-    lets : elaboration_well_type_term H1.
-    lets : elaboration_well_type_term H4.
-    lets : elaboration_well_type_term H6.
+    lets Co : co_sound H0.
+    lets : elab_sound H1.
+    lets : elab_sound H4.
+    lets : elab_sound H6.
     simpls.
-    sapply coercion_compatibility2...
+    sapply coercion_compat2...
     apply compat_pair2; splits~.
     apply disjoint_rel_e_open...
 
@@ -53,14 +53,14 @@ Proof with eauto.
     substs.
     lets Imp1 : coherence_log H H3.
     lets Imp2 : coherence_log H5 H5.
-    lets Co : subtyping_well_type_coercion H0.
+    lets Co : co_sound H0.
     simpls.
 
-    sapply coercion_compatibility1...
+    sapply coercion_compat1...
     apply compat_pair2; splits...
-    lets : elaboration_well_type_term H3.
-    lets : elaboration_well_type_term H5.
-    lets : elaboration_well_type_term H.
+    lets : elab_sound H3.
+    lets : elab_sound H5.
+    lets : elab_sound H.
     apply disjoint_rel_e_open...
 
 
@@ -74,14 +74,14 @@ Proof with eauto.
     substs.
     lets Imp1 : coherence_log H H4.
     lets Imp2 : coherence_log H6 H6.
-    lets Co1 : subtyping_well_type_coercion H0.
-    lets Co2 : subtyping_well_type_coercion H2.
-    lets : elaboration_well_type_term H4.
-    lets : elaboration_well_type_term H6.
-    lets : elaboration_well_type_term H.
+    lets Co1 : co_sound H0.
+    lets Co2 : co_sound H2.
+    lets : elab_sound H4.
+    lets : elab_sound H6.
+    lets : elab_sound H.
     simpls.
-    sapply coercion_compatibility2...
-    sapply coercion_compatibility1...
+    sapply coercion_compat2...
+    sapply coercion_compat1...
     apply compat_pair2; splits~.
     apply disjoint_rel_e_open...
 
@@ -118,10 +118,10 @@ Proof with eauto.
     simpls.
     lets Imp1 : coherence_log H3 H9.
     lets Imp2 : coherence_log H5 H8.
-    lets : elaboration_well_type_term H3.
-    lets : elaboration_well_type_term H5.
-    lets : elaboration_well_type_term H8.
-    lets : elaboration_well_type_term H9.
+    lets : elab_sound H3.
+    lets : elab_sound H5.
+    lets : elab_sound H8.
+    lets : elab_sound H9.
     apply compat_pair1; splits~;
     apply compat_pair2; splits~.
     apply disjoint_rel_e_open...
@@ -136,19 +136,19 @@ Proof with eauto.
     lets : inference_unique H5 H9.
     lets : inference_unique H7 H4.
     substs.
-    lets Co1 : subtyping_well_type_coercion H0.
-    lets Co2 : subtyping_well_type_coercion H3.
-    lets : elaboration_well_type_term H5.
-    lets : elaboration_well_type_term H7.
-    lets : elaboration_well_type_term H4.
-    lets : elaboration_well_type_term H9.
+    lets Co1 : co_sound H0.
+    lets Co2 : co_sound H3.
+    lets : elab_sound H5.
+    lets : elab_sound H7.
+    lets : elab_sound H4.
+    lets : elab_sound H9.
     simpls.
     lets Imp1 : coherence_log H5 H9.
     lets Imp2 : coherence_log H7 H4.
 
 
-    eapply coercion_compatibility1...
-    eapply coercion_compatibility2...
+    eapply coercion_compat1...
+    eapply coercion_compat2...
 
     apply compat_pair1; splits~.
     apply compat_pair2; splits~;
@@ -219,20 +219,20 @@ Proof with eauto.
 
 
 
-    lets Co1 : subtyping_well_type_coercion H0.
-    lets Co2 : subtyping_well_type_coercion H3.
+    lets Co1 : co_sound H0.
+    lets Co2 : co_sound H3.
     simpls.
 
 
-    lets : elaboration_well_type_term H7.
-    lets : elaboration_well_type_term H4.
-    lets : elaboration_well_type_term H2.
-    lets : elaboration_well_type_term H11.
-    lets : elaboration_well_type_term H5.
-    lets : elaboration_well_type_term H13.
+    lets : elab_sound H7.
+    lets : elab_sound H4.
+    lets : elab_sound H2.
+    lets : elab_sound H11.
+    lets : elab_sound H5.
+    lets : elab_sound H13.
 
-    sapply coercion_compatibility1...
-    sapply coercion_compatibility2...
+    sapply coercion_compat1...
+    sapply coercion_compat2...
 
     apply compat_pair1; splits~.
     apply compat_pair1; splits~;
@@ -361,18 +361,18 @@ Proof.
     lets : inference_unique H1 H.
     substs.
     lets : coherence_log H1 H.
-    lets Co : subtyping_well_type_coercion H0.
+    lets Co : co_sound H0.
     simpls.
-    lets* : coercion_compatibility2 Co H2.
+    lets* : coercion_compat2 Co H2.
 
   - Case "<= and =>".
     inverts H1.
     lets : inference_unique H2 H.
     substs.
     lets : coherence_log H H2.
-    lets Co : subtyping_well_type_coercion H0.
+    lets Co : co_sound H0.
     simpls.
-    lets* : coercion_compatibility1 Co H1.
+    lets* : coercion_compat1 Co H1.
 
   - Case "<= and <=".
     inverts H1.
@@ -380,8 +380,8 @@ Proof.
     lets : inference_unique H H1.
     substs.
     lets : coherence_log H H1.
-    lets Co1 : subtyping_well_type_coercion H0.
-    lets Co2 : subtyping_well_type_coercion H3.
-    lets* : coercion_compatibility1 Co1 H2.
-    lets* : coercion_compatibility2 Co2 H4.
+    lets Co1 : co_sound H0.
+    lets Co2 : co_sound H3.
+    lets* : coercion_compat1 Co1 H2.
+    lets* : coercion_compat2 Co2 H4.
 Qed.

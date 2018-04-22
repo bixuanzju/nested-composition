@@ -14,7 +14,7 @@ Require Import
 
 
 
-Lemma coercion_compatibility1 : forall c T1 T2 T0 G1 G2 t1 t2,
+Lemma coercion_compat1 : forall c T1 T2 T0 G1 G2 t1 t2,
     c |= T1 ~> T2 ->
     rel_e_open G1 G2 t1 t2 T1 T0 ->
     rel_e_open G1 G2 (trm_capp c t1) t2 T2 T0.
@@ -537,7 +537,7 @@ Qed.
 
 
 
-Lemma coercion_compatibility2 : forall c T1 T2 T0 G1 G2 t1 t2,
+Lemma coercion_compat2 : forall c T1 T2 T0 G1 G2 t1 t2,
     c |= T1 ~> T2 ->
     rel_e_open G1 G2 t1 t2 T0 T1 ->
     rel_e_open G1 G2 t1 (trm_capp c t2)  T0 T2.

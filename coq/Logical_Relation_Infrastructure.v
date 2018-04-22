@@ -571,10 +571,10 @@ Lemma context_well_type : forall Γ Γ' E A A' e dir dir' C c,
     ∥ Γ' ∥ |= (appctx c e) ~: |A'|.
 Proof.
   introv Typ. gen E e.
-  induction Typ; intros; simpls*; lets* : elaboration_well_type_term.
+  induction Typ; intros; simpls*; lets* : elab_sound.
 
-  lets* : elaboration_well_type_term H.
-  lets* : elaboration_well_type_term H.
+  lets* : elab_sound H.
+  lets* : elab_sound H.
 
   - Case "trm_abs1".
     lets : IHTyp H0.
