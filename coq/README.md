@@ -17,18 +17,3 @@ Run `make` will check the proofs.
 + `Coercion_Compatibility.v` - Coercion compatibility lemma.
 + `Subtype_Property.v` - Soundness and completeness of the algorithmic subtyping.
 + `ExtraLemmas.v` - Some corollaries about the calculus.
-
-## Lemmas and Theorems in the Paper ##
-
-+ `Theorem 1`  - `Target_Safety.v/preservation`
-+ `Theorem 2`  - `Target_Safety.v/progress`
-+ `Lemma 1`  - `Source_Property.v/subtyping_well_type_coercion`
-+ `Lemma 2`  - `Source_Property.v/elaboration_well_type_term`
-+ `Lemma 3`  - `Compatibility_Lemma.v/disjoint_rel_v`
-+ `Lemma 4`  - `Coercion_Compatibility.v/coercion_compatibility1`, `Coercion_Compatibility.v/coercion_compatibility2`
-+ `Lemma 5`  - `Coherence.v/congruence`
-+ `Theorem 3`  - `Coherence.v/coherence_thm`
-+ `Theorem 4`  - `Source_Property.v/inference_unique`
-+ `Lemma 6`  - `Coherence.v/coherence_log`
-+ `Theorem 5`  - `Subtype_Property.v/ASub2sub`
-+ `Theorem 6`  - `Subtype_Property.v/sub2ASub`
